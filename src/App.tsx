@@ -165,6 +165,7 @@ type Evidence = {
   source?: string;
   path?: string;
   wslPath?: string;
+  previewUrl?: string;
 };
 
 type DecisionItem = {
@@ -182,9 +183,9 @@ type DecisionItem = {
 const steps = ["Discuss", "Synthesize", "Build", "Review", "Verify"];
 
 const slashCommandPresets = [
-  { id: "round", label: "/round", command: "/round", hint: "Summarize this round" },
-  { id: "clear", label: "/clear", command: "/clear", hint: "Clear current context" },
-  { id: "resume", label: "/resume", command: "/resume", hint: "Resume a previous thread" }
+  { id: "help", label: "/help", command: "/help", hint: "Show commands available in the selected CLI" },
+  { id: "clear", label: "/clear", command: "/clear", hint: "Start fresh or clear context, depending on the CLI" },
+  { id: "compact", label: "/compact", command: "/compact", hint: "Summarize long context where supported" }
 ];
 
 const setupCopy: Record<
@@ -350,6 +351,22 @@ function snapshotReply(runner: Runner, task: string, hostPath: string, wslPath: 
   ].join("\n");
 }
 
+function evidenceHandoffText(item: Evidence, task: string) {
+  return [
+    `Evidence handoff: ${item.name}`,
+    `Type: ${item.kind}`,
+    item.source ? `Source: ${item.source}` : "",
+    item.path ? `Windows file: ${item.path}` : "",
+    item.wslPath ? `WSL file: ${item.wslPath}` : "",
+    `Task: ${task}`,
+    "Please review this evidence before the next agent step.",
+    "Focus on whether it changes the root cause, risk level, reproduction path, or next command.",
+    "If you cannot inspect the file directly, ask me for OCR text, logs, or a focused follow-up snapshot."
+  ]
+    .filter(Boolean)
+    .join("\n");
+}
+
 async function captureDisplayFrame() {
   if (!navigator.mediaDevices?.getDisplayMedia) {
     throw new Error("Screen capture is not available in this browser context.");
@@ -474,13 +491,14 @@ export function App() {
   const [busyRunner, setBusyRunner] = useState<string | null>(null);
   const [lastRunnerOutput, setLastRunnerOutput] = useState("");
   const [evidence, setEvidence] = useState(seedEvidence);
+  const [selectedEvidenceId, setSelectedEvidenceId] = useState(seedEvidence[0]?.id || "");
   const [decisions, setDecisions] = useState(seedDecisions);
   const [decisionDraft, setDecisionDraft] = useState("");
   const [copiedDecision, setCopiedDecision] = useState("");
   const [copiedSetup, setCopiedSetup] = useState("");
   const [commandRunnerId, setCommandRunnerId] = useState("");
   const [writerRunnerId, setWriterRunnerId] = useState("");
-  const [slashCommand, setSlashCommand] = useState("/round");
+  const [slashCommand, setSlashCommand] = useState("/help");
   const [consoleInput, setConsoleInput] = useState("");
   const [consoleOutput, setConsoleOutput] = useState("");
   const [consoleAutoRefresh, setConsoleAutoRefresh] = useState(false);
@@ -541,6 +559,17 @@ export function App() {
   }, [git?.status]);
 
   const runnerPreset = useMemo(() => runnerDefaults(activeProject, runnerType), [activeProject, runnerType]);
+
+  const selectedEvidence = useMemo(() => {
+    return evidence.find((item) => item.id === selectedEvidenceId) || evidence[0];
+  }, [evidence, selectedEvidenceId]);
+
+  const selectedEvidencePreview = useMemo(() => {
+    if (!selectedEvidence) return "";
+    if (selectedEvidence.previewUrl) return selectedEvidence.previewUrl;
+    if (!activeProject || !selectedEvidence.path) return "";
+    return `/api/evidence?projectId=${encodeURIComponent(activeProject.id)}&name=${encodeURIComponent(selectedEvidence.name)}`;
+  }, [activeProject?.id, selectedEvidence]);
 
   const setupRows = useMemo(() => {
     const pathChecks = (doctor?.checks || []).filter((item) => item.id.startsWith("project-"));
@@ -823,6 +852,7 @@ export function App() {
       };
       const replyDraft = snapshotReply(runner, task, saved.hostPath, saved.wslPath);
       setEvidence((current) => [evidenceItem, ...current].slice(0, 8));
+      setSelectedEvidenceId(evidenceItem.id);
       const snapshotDecision: DecisionItem = {
         id: `snapshot-${runner.session}-${Date.now()}`,
         source: `${runner.session} snapshot`,
@@ -860,10 +890,30 @@ export function App() {
         id: `${file.name}-${file.lastModified}`,
         name: file.name,
         kind,
-        size: `${Math.max(1, Math.round(file.size / 1024))} KB`
+        size: `${Math.max(1, Math.round(file.size / 1024))} KB`,
+        previewUrl: kind === "image" || kind === "video" ? URL.createObjectURL(file) : undefined
       } satisfies Evidence;
     });
     setEvidence((current) => [...next, ...current].slice(0, 8));
+    setSelectedEvidenceId(next[0]?.id || selectedEvidenceId);
+  }
+
+  function buildEvidenceHandoff(item = selectedEvidence) {
+    if (!item) return;
+    const replyDraft = evidenceHandoffText(item, task);
+    const evidenceDecision: DecisionItem = {
+      id: `evidence-${item.id}-${Date.now()}`,
+      source: item.source ? `${item.source} evidence` : "Evidence tray",
+      title: `Review evidence: ${item.name}`,
+      prompt: `Review ${item.name} before the next agent step.`,
+      options: ["Send to other agent", "Need OCR text", "Need more evidence"],
+      selected: "Send to other agent",
+      note: item.wslPath || item.path || "Local browser file selected.",
+      replyDraft,
+      status: "open"
+    };
+    setDecisions((current) => [evidenceDecision, ...current].slice(0, 12));
+    setLastRunnerOutput(`Evidence handoff drafted for ${item.name}.`);
   }
 
   function captureDecisions(output: string, runner: Runner) {
@@ -1362,7 +1412,7 @@ export function App() {
               onKeyDown={(event) => {
                 if (event.key === "Enter") void sendConsoleInput();
               }}
-              placeholder="Type a task, decision reply, /round, /clear, /resume..."
+              placeholder="Type a task, decision reply, /help, /clear, /compact..."
             />
             <button disabled={!!busyRunner || commandRunner?.state !== "running" || !consoleInput.trim()} onClick={() => void sendConsoleInput()}>
               <Send size={13} />
@@ -1498,7 +1548,11 @@ export function App() {
           </div>
           <div className="evidence-list">
             {evidence.map((item) => (
-              <div className="evidence-card" key={item.id}>
+              <button
+                className={cx("evidence-card", selectedEvidence?.id === item.id && "active")}
+                key={item.id}
+                onClick={() => setSelectedEvidenceId(item.id)}
+              >
                 <div className={cx("evidence-icon", item.kind)}>
                   {item.kind === "image" ? <Image size={18} /> : item.kind === "video" ? <Play size={18} /> : <FileDiff size={18} />}
                 </div>
@@ -1506,9 +1560,40 @@ export function App() {
                   <strong>{item.name}</strong>
                   <span>{item.source ? `${item.source} - ` : ""}{item.kind} - {item.size}</span>
                 </div>
-              </div>
+              </button>
             ))}
           </div>
+          {selectedEvidence && (
+            <div className="evidence-preview">
+              <div className="evidence-preview-head">
+                <div>
+                  <strong>{selectedEvidence.name}</strong>
+                  <span>{selectedEvidence.source || "Local evidence"} / {selectedEvidence.kind}</span>
+                </div>
+                <button onClick={() => buildEvidenceHandoff(selectedEvidence)}>
+                  <Send size={13} />
+                  Build handoff
+                </button>
+              </div>
+              <div className="evidence-preview-body">
+                {selectedEvidence.kind === "image" && selectedEvidencePreview ? (
+                  <img src={selectedEvidencePreview} alt={selectedEvidence.name} />
+                ) : selectedEvidence.kind === "video" && selectedEvidencePreview ? (
+                  <video src={selectedEvidencePreview} controls />
+                ) : (
+                  <div className="evidence-preview-empty">
+                    <FileDiff size={18} />
+                    <span>Preview is not available for this evidence type.</span>
+                  </div>
+                )}
+              </div>
+              <div className="evidence-paths">
+                {selectedEvidence.path && <span>Windows: {selectedEvidence.path}</span>}
+                {selectedEvidence.wslPath && <span>WSL: {selectedEvidence.wslPath}</span>}
+                {!selectedEvidence.path && !selectedEvidence.wslPath && <span>Browser-local file. Build handoff will ask the other agent for OCR or a focused snapshot if needed.</span>}
+              </div>
+            </div>
+          )}
         </section>
       </section>
 
@@ -1833,7 +1918,7 @@ export function App() {
                 onKeyDown={(event) => {
                   if (event.key === "Enter") void sendCliCommand();
                 }}
-                placeholder="/round, /clear, /resume..."
+                placeholder="/help, /clear, /compact..."
               />
               <button disabled={!!busyRunner || commandRunner?.state !== "running" || !slashCommand.trim()} onClick={() => void sendCliCommand()}>
                 <Send size={13} />

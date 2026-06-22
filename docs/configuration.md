@@ -52,6 +52,10 @@ Fields:
 - `tmux.startCommand`: allowlisted command used by Start/Restart.
 - `tmux.dismissCodexUpdatePrompt`: optional Codex startup prompt workaround.
 
+`rc-*` is only a convention used by the examples. It is short for
+remote-control/RelayDesk-controlled and helps you remember that the tmux session
+is meant to stay attachable from RelayDesk or another terminal.
+
 ## Windows + WSL
 
 Use:

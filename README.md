@@ -137,7 +137,7 @@ added later only when an agent exposes official usage metadata.
 
 Session Console is the main in-browser surface for live tmux interaction.
 
-- Select a runner, such as `rc-vibesync` or `rc-codex-vibesync`.
+- Select a runner, such as `rc-<project-name>` or `rc-codex-<project-name>`.
 - Click Capture Pane to pull the current terminal pane into RelayDesk.
 - Turn on Auto refresh to peek at the pane every few seconds without counting it
   as a formal capture.
@@ -148,13 +148,43 @@ Session Console is the main in-browser surface for live tmux interaction.
 Commands are sent to the real tmux session and press Enter. Use the visible pane
 state to confirm the agent is waiting at a prompt before sending input.
 
+## Why `rc-*` Session Names?
+
+`rc` is only a naming convention in the example config. It means "remote
+control" or "RelayDesk-controlled" in practice, not a required tmux feature.
+
+The reason to keep a stable tmux session name is that you can leave a local tmux
+server running on your computer, then later attach to that same Claude Code or
+Codex CLI session from another terminal, RelayDesk, or a remote-control workflow.
+
+Example naming:
+
+- `rc-my-app`: Claude Code runner for `my-app`.
+- `rc-codex-my-app`: Codex CLI runner for `my-app`.
+
 ## Slash Commands
 
-Runner Ops includes a Slash command panel for commands such as `/round`,
-`/clear`, and `/resume`.
+Runner Ops includes a Slash command panel. RelayDesk does not implement these
+commands itself; it sends the text into the selected live CLI session.
 
-These commands are sent into the selected live tmux session with the same runner
-send path used by RelayDesk tasks. They are not simulated in the browser.
+Official commands depend on the agent and version. Use `/help` or type `/` in
+the target CLI to see what is available in your environment.
+
+Common official examples:
+
+- Claude Code: `/help`, `/clear`, `/compact`, `/resume`, `/remote-control`,
+  `/diff`, `/code-review`.
+- Codex CLI: `/clear`, `/new`, `/resume`, `/compact`, `/diff`, `/plan`,
+  `/goal`, `/fork`.
+
+Custom commands such as `/round` or `/handoff` are not RelayDesk or provider
+built-ins. They can still work if you define them through your agent's custom
+commands, skills, prompts, or project setup.
+
+References:
+
+- Claude Code commands: <https://code.claude.com/docs/en/commands>
+- Codex CLI slash commands: <https://developers.openai.com/codex/cli/slash-commands>
 
 Use Capture first when you are not sure the agent is waiting at an input prompt.
 If the agent is still executing, wait until the prompt returns before sending a
@@ -197,11 +227,11 @@ Recommended WSL tmux runner:
   "id": "claude-code",
   "name": "Claude Code tmux",
   "kind": "tmux",
-  "session": "rc-vibesync",
+  "session": "rc-my-app",
   "tmux": {
     "mode": "wsl",
-    "cwd": "/mnt/c/path/to/project",
-    "startCommand": "bash -lc 'cd /mnt/c/path/to/project && claude'"
+    "cwd": "/mnt/c/path/to/MyApp",
+    "startCommand": "bash -lc 'cd /mnt/c/path/to/MyApp && claude'"
   }
 }
 ```
@@ -213,11 +243,11 @@ Codex CLI runner with startup prompt handling:
   "id": "codex-cli",
   "name": "Codex CLI tmux",
   "kind": "tmux",
-  "session": "rc-codex-vibesync",
+  "session": "rc-codex-my-app",
   "tmux": {
     "mode": "wsl",
-    "cwd": "/mnt/c/path/to/project",
-    "startCommand": "bash -lc 'cd /mnt/c/path/to/project && codex --no-alt-screen --dangerously-bypass-approvals-and-sandbox -C /mnt/c/path/to/project'",
+    "cwd": "/mnt/c/path/to/MyApp",
+    "startCommand": "bash -lc 'cd /mnt/c/path/to/MyApp && codex --no-alt-screen --dangerously-bypass-approvals-and-sandbox -C /mnt/c/path/to/MyApp'",
     "dismissCodexUpdatePrompt": true
   }
 }

@@ -1,7 +1,7 @@
 import { createServer } from "node:http";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { existsSync } from "node:fs";
-import { dirname, join, resolve } from "node:path";
+import { dirname, join, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 import { spawn } from "node:child_process";
 
@@ -182,6 +182,30 @@ function safeSegment(value) {
     .slice(0, 80) || "item";
 }
 
+function evidenceDir(project) {
+  return resolve(root, ".relaydesk", "evidence", safeSegment(project.id));
+}
+
+async function sendEvidenceFile(res, project, name) {
+  const filename = safeSegment(name);
+  const dir = evidenceDir(project);
+  const file = resolve(dir, filename);
+  const boundary = dir.endsWith(sep) ? dir : `${dir}${sep}`;
+  if (!file.startsWith(boundary)) return notFound(res);
+  try {
+    const data = await readFile(file);
+    const lower = filename.toLowerCase();
+    const mime = lower.endsWith(".jpg") || lower.endsWith(".jpeg") ? "image/jpeg" : lower.endsWith(".png") ? "image/png" : "application/octet-stream";
+    res.writeHead(200, {
+      "content-type": mime,
+      "cache-control": "no-store"
+    });
+    res.end(data);
+  } catch {
+    notFound(res);
+  }
+}
+
 const usage = {
   startedAt: new Date().toISOString(),
   totals: {
@@ -317,7 +341,7 @@ async function saveEvidence(project, body) {
   }
   const stamp = new Date().toISOString().replace(/[:.]/g, "-");
   const runner = safeSegment(body.runnerId || body.source || "runner");
-  const dir = join(root, ".relaydesk", "evidence", safeSegment(project.id));
+  const dir = evidenceDir(project);
   await mkdir(dir, { recursive: true });
   const filename = `${stamp}-${runner}.${ext}`;
   const hostPath = join(dir, filename);
@@ -701,6 +725,13 @@ async function route(req, res) {
 
   if (req.method === "GET" && url.pathname === "/api/usage") {
     json(res, 200, usageSnapshot());
+    return;
+  }
+
+  if (req.method === "GET" && url.pathname === "/api/evidence") {
+    const project = findProject(config, url.searchParams.get("projectId"));
+    if (!project) return notFound(res);
+    await sendEvidenceFile(res, project, url.searchParams.get("name"));
     return;
   }
 

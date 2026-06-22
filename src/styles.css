@@ -978,9 +978,21 @@ h2 {
   gap: 11px;
   min-width: 0;
   padding: 11px;
+  color: var(--text);
   background: var(--panel-2);
   border: 1px solid var(--line-soft);
   border-radius: 8px;
+  cursor: pointer;
+  text-align: left;
+}
+
+.evidence-card:hover,
+.evidence-card.active {
+  border-color: rgba(45, 212, 191, 0.34);
+}
+
+.evidence-card.active {
+  background: rgba(45, 212, 191, 0.06);
 }
 
 .evidence-card strong,
@@ -1021,6 +1033,100 @@ h2 {
 .evidence-icon.log {
   color: var(--accent-2);
   background: rgba(125, 211, 252, 0.08);
+}
+
+.evidence-preview {
+  margin-top: 12px;
+  padding: 12px;
+  background: #0d1015;
+  border: 1px solid var(--line-soft);
+  border-radius: 8px;
+}
+
+.evidence-preview-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.evidence-preview-head strong,
+.evidence-preview-head span {
+  display: block;
+}
+
+.evidence-preview-head strong {
+  color: var(--text);
+  font-size: 13px;
+}
+
+.evidence-preview-head span {
+  margin-top: 3px;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.evidence-preview-head button {
+  height: 31px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  flex: 0 0 auto;
+  padding: 0 10px;
+  color: var(--text);
+  background: var(--panel-2);
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.evidence-preview-head button:hover {
+  border-color: rgba(45, 212, 191, 0.36);
+}
+
+.evidence-preview-body {
+  min-height: 150px;
+  max-height: 360px;
+  display: grid;
+  place-items: center;
+  margin-top: 12px;
+  overflow: auto;
+  background: #080b0f;
+  border: 1px solid var(--line-soft);
+  border-radius: 8px;
+}
+
+.evidence-preview-body img,
+.evidence-preview-body video {
+  display: block;
+  max-width: 100%;
+  max-height: 350px;
+  border-radius: 6px;
+}
+
+.evidence-preview-empty {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.evidence-paths {
+  display: grid;
+  gap: 5px;
+  margin-top: 10px;
+}
+
+.evidence-paths span {
+  overflow-wrap: anywhere;
+  color: var(--faint);
+  font-family: ui-monospace, SFMono-Regular, Consolas, "Liberation Mono", monospace;
+  font-size: 11px;
+  line-height: 1.45;
 }
 
 .ops-card {
@@ -1828,6 +1934,15 @@ pre {
 
   .console-command-bar {
     grid-template-columns: 1fr;
+  }
+
+  .evidence-list {
+    grid-template-columns: 1fr;
+  }
+
+  .evidence-preview-head {
+    flex-direction: column;
+    align-items: stretch;
   }
 
   .decision-compose {

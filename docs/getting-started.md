@@ -61,6 +61,16 @@ Windows + WSL path example:
 - Windows path: `C:\Users\you\Desktop\MyApp`
 - WSL path: `/mnt/c/Users/you/Desktop/MyApp`
 
+Session name example:
+
+- `rc-my-app` for the Claude Code tmux session.
+- `rc-codex-my-app` for the Codex CLI tmux session.
+
+`rc` is only a naming convention. It can mean "remote control" or
+"RelayDesk-controlled". The practical benefit is that a stable tmux session name
+lets you reconnect later from RelayDesk, a terminal, or a remote-control flow as
+long as the tmux server is still running on your machine.
+
 ## 4. Start RelayDesk
 
 Terminal 1:
@@ -119,7 +129,7 @@ Session Console is the main daily surface for the live tmux pane.
 1. Pick a runner from the selector.
 2. Click Capture Pane to read the current tmux pane.
 3. Turn on Auto refresh if you want RelayDesk to peek at the pane every few seconds.
-4. Type a normal follow-up, decision reply, `/round`, `/clear`, or `/resume`.
+4. Type a normal follow-up, decision reply, or a slash command supported by that CLI.
 5. Press Send.
 
 Auto refresh uses a non-counting peek action. Formal Capture still updates local
@@ -127,12 +137,24 @@ activity metrics and can create Decision Inbox items.
 
 ## 9. Send slash commands
 
-In Runner Ops, use Slash command for live CLI commands such as `/round`,
-`/clear`, and `/resume`.
+In Runner Ops, use Slash command for live CLI commands such as `/help`,
+`/clear`, and `/compact`.
 
 RelayDesk sends the command to the selected tmux session and presses Enter.
 This is useful when Claude Code or another CLI agent needs context rotation,
 clear, resume, or similar command-mode actions.
+
+RelayDesk does not implement slash commands itself. Official commands differ by
+agent and version:
+
+- Claude Code: type `/` or `/help`; common examples include `/clear`,
+  `/compact`, `/resume`, `/remote-control`, `/diff`, and `/code-review`.
+- Codex CLI: type `/` or check the official docs; common examples include
+  `/clear`, `/new`, `/resume`, `/compact`, `/diff`, `/plan`, `/goal`, and
+  `/fork`.
+
+Custom commands such as `/round` or `/handoff` only work if you define them in
+your own agent skills, prompts, commands, or project setup.
 
 Use Capture first if you are not sure the agent is waiting at an input prompt.
 
