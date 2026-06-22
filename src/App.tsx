@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import {
   Activity,
   AlertTriangle,
+  Archive,
   BookOpen,
   Bot,
   Camera,
@@ -178,6 +179,27 @@ type DecisionItem = {
   note: string;
   replyDraft: string;
   status: "open" | "sent";
+};
+
+type RelaySessionState = {
+  activeStep: string;
+  task: string;
+  decisions: DecisionItem[];
+  evidence: Evidence[];
+  selectedEvidenceId: string;
+  writerRunnerId: string;
+  commandRunnerId: string;
+  consoleOutput: string;
+};
+
+type RelaySession = {
+  id: string;
+  projectId: string;
+  title: string;
+  status: "active" | "archived" | "deleted";
+  createdAt: string;
+  updatedAt: string;
+  state: RelaySessionState;
 };
 
 const steps = ["Discuss", "Synthesize", "Build", "Review", "Verify"];
@@ -581,6 +603,12 @@ export function App() {
   const [copiedSetup, setCopiedSetup] = useState("");
   const [copiedSessionBrief, setCopiedSessionBrief] = useState(false);
   const [sessionStartedAt] = useState(() => new Date().toISOString());
+  const [sessions, setSessions] = useState<RelaySession[]>([]);
+  const [activeSessionId, setActiveSessionId] = useState("");
+  const [sessionHydrated, setSessionHydrated] = useState(false);
+  const [sessionBusy, setSessionBusy] = useState("");
+  const [sessionLastSavedAt, setSessionLastSavedAt] = useState("");
+  const [showArchivedSessions, setShowArchivedSessions] = useState(false);
   const [commandRunnerId, setCommandRunnerId] = useState("");
   const [writerRunnerId, setWriterRunnerId] = useState("");
   const [slashCommand, setSlashCommand] = useState("/help");
@@ -606,6 +634,16 @@ export function App() {
   const activeConfigProject = useMemo(
     () => (config?.config.projects || []).find((project) => project.id === activeProject?.id),
     [config, activeProject?.id]
+  );
+
+  const visibleSessions = useMemo(
+    () => sessions.filter((session) => session.status !== "archived" || showArchivedSessions),
+    [sessions, showArchivedSessions]
+  );
+
+  const activeSession = useMemo(
+    () => sessions.find((session) => session.id === activeSessionId),
+    [sessions, activeSessionId]
   );
 
   const visibleDoctorChecks = useMemo(() => {
@@ -660,9 +698,10 @@ export function App() {
   }, [activeProject?.id, selectedEvidence]);
 
   const sessionKey = useMemo(() => {
+    if (activeSession?.id) return activeSession.id;
     const stamp = sessionStartedAt.replace(/[-:T.Z]/g, "").slice(0, 14);
     return `rd-${activeProject?.id || "project"}-${stamp}`;
-  }, [activeProject?.id, sessionStartedAt]);
+  }, [activeProject?.id, activeSession?.id, sessionStartedAt]);
 
   const decisionCounts = useMemo(() => {
     return {
@@ -706,6 +745,222 @@ export function App() {
     ] satisfies Array<{ id: string; label: string; status: DoctorCheck["status"]; detail: string }>;
   }, [doctor?.checks, doctorById, setup]);
 
+  function currentSessionState(): RelaySessionState {
+    return {
+      activeStep,
+      task,
+      decisions,
+      evidence,
+      selectedEvidenceId,
+      writerRunnerId,
+      commandRunnerId,
+      consoleOutput
+    };
+  }
+
+  function titleFromTask(value = task) {
+    const title = value.trim().split(/\r?\n/)[0] || `${activeProject?.name || "Project"} session`;
+    return title.length > 72 ? `${title.slice(0, 69)}...` : title;
+  }
+
+  function applySessionState(session: RelaySession) {
+    const state = session.state || ({} as RelaySessionState);
+    setActiveStep(steps.includes(state.activeStep) ? state.activeStep : "Discuss");
+    setTask(state.task || "");
+    setDecisions(Array.isArray(state.decisions) ? state.decisions : []);
+    setEvidence(Array.isArray(state.evidence) ? state.evidence : []);
+    setSelectedEvidenceId(state.selectedEvidenceId || state.evidence?.[0]?.id || "");
+    setWriterRunnerId(state.writerRunnerId || "");
+    setCommandRunnerId(state.commandRunnerId || "");
+    setConsoleOutput(state.consoleOutput || "");
+  }
+
+  async function postSessionAction(body: Record<string, unknown>) {
+    if (!activeProject) throw new Error("No active project.");
+    const response = await fetch("/api/sessions", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ projectId: activeProject.id, ...body })
+    });
+    const result = (await response.json()) as { ok?: boolean; error?: string; session?: RelaySession };
+    if (!response.ok || result.ok === false || !result.session) throw new Error(result.error || "Session action failed.");
+    return result.session;
+  }
+
+  function mergeSession(nextSession: RelaySession) {
+    setSessions((current) =>
+      [nextSession, ...current.filter((session) => session.id !== nextSession.id)].sort((a, b) =>
+        String(b.updatedAt || b.createdAt).localeCompare(String(a.updatedAt || a.createdAt))
+      )
+    );
+  }
+
+  async function saveActiveSession(options: { silent?: boolean } = {}) {
+    if (!activeProject || !activeSession || !sessionHydrated) return;
+    if (!options.silent) setSessionBusy("save");
+    try {
+      const nextSession = await postSessionAction({
+        action: "update",
+        sessionId: activeSession.id,
+        title: titleFromTask(),
+        status: activeSession.status,
+        state: currentSessionState()
+      });
+      mergeSession(nextSession);
+      setSessionLastSavedAt(nextSession.updatedAt);
+      return nextSession;
+    } catch (error) {
+      if (!options.silent) setLastRunnerOutput(`Session save failed: ${String(error)}`);
+    } finally {
+      if (!options.silent) setSessionBusy("");
+    }
+  }
+
+  function emptyNewSessionState(): RelaySessionState {
+    return {
+      activeStep: "Discuss",
+      task: "",
+      decisions: [],
+      evidence: [],
+      selectedEvidenceId: "",
+      writerRunnerId: writerRunner?.id || "",
+      commandRunnerId: commandRunner?.id || "",
+      consoleOutput: ""
+    };
+  }
+
+  async function createSession() {
+    if (!activeProject) return;
+    setSessionHydrated(false);
+    setSessionBusy("create");
+    try {
+      const nextSession = await postSessionAction({
+        action: "create",
+        title: `${activeProject.name} session`,
+        state: emptyNewSessionState()
+      });
+      mergeSession(nextSession);
+      setActiveSessionId(nextSession.id);
+      applySessionState(nextSession);
+      setSessionLastSavedAt(nextSession.updatedAt);
+      setSessionHydrated(true);
+    } catch (error) {
+      setLastRunnerOutput(`Session create failed: ${String(error)}`);
+    } finally {
+      setSessionBusy("");
+    }
+  }
+
+  async function selectSession(id: string) {
+    const nextSession = sessions.find((session) => session.id === id);
+    if (!nextSession || nextSession.id === activeSessionId) return;
+    await saveActiveSession({ silent: true });
+    setSessionHydrated(false);
+    setActiveSessionId(nextSession.id);
+    applySessionState(nextSession);
+    setSessionHydrated(true);
+  }
+
+  async function archiveSession() {
+    if (!activeProject || !activeSession) return;
+    const ok = window.confirm(`Archive "${activeSession.title}"?`);
+    if (!ok) return;
+    await saveActiveSession({ silent: true });
+    setSessionBusy("archive");
+    try {
+      const archived = await postSessionAction({ action: "archive", sessionId: activeSession.id });
+      mergeSession(archived);
+      const nextSession = sessions.find((session) => session.id !== activeSession.id && session.status === "active");
+      if (nextSession) {
+        setActiveSessionId(nextSession.id);
+        applySessionState(nextSession);
+      } else {
+        const replacement = await postSessionAction({
+          action: "create",
+          title: `${activeProject.name} session`,
+          state: emptyNewSessionState()
+        });
+        setSessions((current) => [
+          replacement,
+          archived,
+          ...current.filter((session) => session.id !== activeSession.id && session.id !== archived.id && session.id !== replacement.id)
+        ]);
+        setActiveSessionId(replacement.id);
+        applySessionState(replacement);
+        setSessionLastSavedAt(replacement.updatedAt);
+      }
+    } catch (error) {
+      setLastRunnerOutput(`Session archive failed: ${String(error)}`);
+    } finally {
+      setSessionBusy("");
+    }
+  }
+
+  async function deleteSession() {
+    if (!activeProject || !activeSession) return;
+    const ok = window.confirm(`Delete "${activeSession.title}" from RelayDesk sessions? This will not delete project files or evidence files.`);
+    if (!ok) return;
+    setSessionBusy("delete");
+    try {
+      await postSessionAction({ action: "delete", sessionId: activeSession.id });
+      const remaining = sessions.filter((session) => session.id !== activeSession.id);
+      setSessions(remaining);
+      const nextSession = remaining.find((session) => session.status === "active") || remaining[0];
+      if (nextSession) {
+        setActiveSessionId(nextSession.id);
+        applySessionState(nextSession);
+      } else {
+        const replacement = await postSessionAction({
+          action: "create",
+          title: `${activeProject.name} session`,
+          state: emptyNewSessionState()
+        });
+        setSessions([replacement]);
+        setActiveSessionId(replacement.id);
+        applySessionState(replacement);
+        setSessionLastSavedAt(replacement.updatedAt);
+      }
+    } catch (error) {
+      setLastRunnerOutput(`Session delete failed: ${String(error)}`);
+    } finally {
+      setSessionBusy("");
+    }
+  }
+
+  async function loadSessions(project = activeProject) {
+    if (!project) return;
+    setSessionHydrated(false);
+    setSessionBusy("load");
+    try {
+      const data = await getJson<{ projectId: string; sessions: RelaySession[] }>(`/api/sessions?projectId=${encodeURIComponent(project.id)}`);
+      let nextSessions = data.sessions || [];
+      if (!nextSessions.length) {
+        const response = await fetch("/api/sessions", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({
+            projectId: project.id,
+            action: "create",
+            title: titleFromTask(),
+            state: currentSessionState()
+          })
+        });
+        const result = (await response.json()) as { ok?: boolean; session?: RelaySession; error?: string };
+        if (!response.ok || result.ok === false || !result.session) throw new Error(result.error || "Session create failed.");
+        nextSessions = [result.session];
+      }
+      setSessions(nextSessions);
+      const preferred = nextSessions.find((session) => session.status === "active") || nextSessions[0];
+      setActiveSessionId(preferred?.id || "");
+      if (preferred) applySessionState(preferred);
+      setSessionHydrated(true);
+    } catch (error) {
+      setLastRunnerOutput(`Session load failed: ${String(error)}`);
+    } finally {
+      setSessionBusy("");
+    }
+  }
+
   async function refresh(project = activeProject) {
     if (!project) return;
     const [nextGit, nextRunners, nextDoctor, nextUsage, nextConfig] = await Promise.all([
@@ -733,8 +988,31 @@ export function App() {
   }, []);
 
   useEffect(() => {
-    if (activeProject) void refresh(activeProject);
+    if (!activeProject) return;
+    void refresh(activeProject);
+    void loadSessions(activeProject);
   }, [activeProject?.id]);
+
+  useEffect(() => {
+    if (!sessionHydrated || !activeProject || !activeSession || sessionBusy) return;
+    const timer = window.setTimeout(() => {
+      void saveActiveSession({ silent: true });
+    }, 900);
+    return () => window.clearTimeout(timer);
+  }, [
+    activeProject?.id,
+    activeSessionId,
+    activeStep,
+    task,
+    decisions,
+    evidence,
+    selectedEvidenceId,
+    writerRunnerId,
+    commandRunnerId,
+    consoleOutput,
+    sessionHydrated,
+    sessionBusy
+  ]);
 
   useEffect(() => {
     if (!runners.length) return;
@@ -1410,15 +1688,41 @@ export function App() {
         </section>
 
         <section className="session-registry">
-          <div>
+          <div className="session-registry-main">
             <div className="section-label">Session Registry</div>
-            <h2>{sessionKey}</h2>
-            <p>{activeProject?.name} / {writerRunner ? shortRunnerName(writerRunner.name) : "No writer"} / started {formatTime(sessionStartedAt)}</p>
+            <h2>{activeSession?.title || sessionKey}</h2>
+            <p>
+              {activeProject?.name} / {writerRunner ? shortRunnerName(writerRunner.name) : "No writer"} / saved{" "}
+              {formatTime(sessionLastSavedAt || activeSession?.updatedAt || sessionStartedAt)}
+            </p>
+            <div className="session-picker-row">
+              <select
+                value={activeSessionId}
+                disabled={!visibleSessions.length || !!sessionBusy}
+                onChange={(event) => void selectSession(event.target.value)}
+              >
+                {!visibleSessions.length && <option value="">No saved sessions</option>}
+                {visibleSessions.map((session) => (
+                  <option value={session.id} key={session.id}>
+                    {session.status === "archived" ? "[archived] " : ""}
+                    {session.title}
+                  </option>
+                ))}
+              </select>
+              <label>
+                <input
+                  type="checkbox"
+                  checked={showArchivedSessions}
+                  onChange={(event) => setShowArchivedSessions(event.target.checked)}
+                />
+                archived
+              </label>
+            </div>
           </div>
           <div className="session-registry-stats">
             <span>
-              <strong>{runners.length}</strong>
-              runners
+              <strong>{sessions.filter((session) => session.status === "active").length}</strong>
+              sessions
             </span>
             <span>
               <strong>{decisionCounts.open}</strong>
@@ -1429,10 +1733,24 @@ export function App() {
               evidence
             </span>
           </div>
-          <button onClick={() => void copySessionBrief()}>
-            <Copy size={13} />
-            {copiedSessionBrief ? "Copied" : "Copy brief"}
-          </button>
+          <div className="session-registry-actions">
+            <button disabled={!!sessionBusy} onClick={() => void createSession()}>
+              <Plus size={13} />
+              New
+            </button>
+            <button disabled={!!sessionBusy || !activeSession || activeSession.status === "archived"} onClick={() => void archiveSession()}>
+              <Archive size={13} />
+              Archive
+            </button>
+            <button disabled={!!sessionBusy || !activeSession} onClick={() => void deleteSession()}>
+              <Trash2 size={13} />
+              Delete
+            </button>
+            <button disabled={!!sessionBusy} onClick={() => void copySessionBrief()}>
+              <Copy size={13} />
+              {copiedSessionBrief ? "Copied" : "Copy brief"}
+            </button>
+          </div>
         </section>
 
         <nav className="stepper">

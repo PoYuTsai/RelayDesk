@@ -126,7 +126,20 @@ Use Project Manager to edit `relay.local.json` from the browser:
 Project Manager changes config only. It does not delete folders and does not
 kill running tmux sessions.
 
-## 7. Start a runner
+## 7. Manage RelayDesk sessions
+
+Use Session Registry near the top of the workspace:
+
+1. Pick an existing session from the selector.
+2. Click New before starting a separate task.
+3. Let RelayDesk autosave task, step, decisions, evidence, and console output.
+4. Click Archive for old work you may want later.
+5. Click Delete only when you no longer need that session metadata.
+
+Sessions are stored locally in `.relaydesk/sessions.json`. Deleting a RelayDesk
+session does not delete project files, tmux sessions, or saved evidence files.
+
+## 8. Start a runner
 
 In Runner Ops:
 
@@ -134,7 +147,7 @@ In Runner Ops:
 2. Click Capture to verify the runner prompt appears.
 3. Click Open Terminal if you want the real tmux session in a terminal window.
 
-## 8. Use Session Console
+## 9. Use Session Console
 
 Session Console is the main daily surface for the live tmux pane.
 
@@ -147,7 +160,7 @@ Session Console is the main daily surface for the live tmux pane.
 Auto refresh uses a non-counting peek action. Formal Capture still updates local
 activity metrics and can create Decision Inbox items.
 
-## 9. Send slash commands
+## 10. Send slash commands
 
 In Runner Ops, use Slash command for live CLI commands such as `/help`,
 `/clear`, and `/compact`.
@@ -175,7 +188,7 @@ own agent skills, prompts, commands, or project setup.
 
 Use Capture first if you are not sure the agent is waiting at an input prompt.
 
-## 10. Send a task
+## 11. Send a task
 
 Write a task in Current Task and click Send Task.
 
@@ -186,7 +199,7 @@ For safer workflows:
 - Let only one agent edit files during Build.
 - Let the other agent review the diff.
 
-## 11. Use Decision Inbox
+## 12. Use Decision Inbox
 
 If an agent asks a question:
 
@@ -198,7 +211,7 @@ If an agent asks a question:
 6. Put the reviewer's conclusion or your decision in the note.
 7. Click Return verdict to format the final decision back to the source agent.
 
-## 12. Watch local activity
+## 13. Watch local activity
 
 The Usage / Activity card shows whether RelayDesk is actually moving work:
 
@@ -209,7 +222,7 @@ The Usage / Activity card shows whether RelayDesk is actually moving work:
 
 These numbers are local activity metrics, not provider billing or token counts.
 
-## 13. Use Snapshot
+## 14. Use Snapshot
 
 If text capture is not enough:
 

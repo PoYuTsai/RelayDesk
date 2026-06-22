@@ -497,6 +497,47 @@ h2 {
   white-space: nowrap;
 }
 
+.session-registry-main {
+  min-width: 0;
+}
+
+.session-picker-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 8px;
+  margin-top: 9px;
+}
+
+.session-picker-row select {
+  min-width: 0;
+  height: 32px;
+  padding: 0 9px;
+  color: var(--text);
+  background: #090c10;
+  border: 1px solid var(--line-soft);
+  border-radius: 7px;
+  outline: none;
+  font-size: 12px;
+  font-weight: 750;
+}
+
+.session-picker-row label {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
+.session-picker-row input {
+  width: 14px;
+  height: 14px;
+  accent-color: var(--accent);
+}
+
 .session-registry-stats {
   display: grid;
   grid-template-columns: repeat(3, auto);
@@ -524,6 +565,12 @@ h2 {
   line-height: 1;
 }
 
+.session-registry-actions {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(92px, 1fr));
+  gap: 7px;
+}
+
 .session-registry button {
   height: 33px;
   display: inline-flex;
@@ -542,6 +589,11 @@ h2 {
 
 .session-registry button:hover {
   border-color: rgba(45, 212, 191, 0.36);
+}
+
+.session-registry button:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
 }
 
 .stepper {
@@ -2007,6 +2059,11 @@ pre {
 
   .session-registry-stats span {
     min-width: 0;
+  }
+
+  .session-picker-row,
+  .session-registry-actions {
+    grid-template-columns: 1fr;
   }
 
   .stepper {

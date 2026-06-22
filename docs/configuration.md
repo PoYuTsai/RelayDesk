@@ -116,3 +116,7 @@ Keep these out of git:
 - `*.log`
 - `.env`
 - screenshots and generated evidence
+
+`.relaydesk/sessions.json` contains local RelayDesk session metadata. It can
+include task text, decision notes, evidence paths, and captured console output,
+so it must stay private.

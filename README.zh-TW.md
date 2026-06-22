@@ -31,6 +31,7 @@ RelayDesk 的目標是把這個來回變成：
 ## 目前 MVP
 
 - 可管理多個本機專案。
+- 每個專案都有本機 persistent sessions，存放在 `.relaydesk/sessions.json`。
 - 每個專案可配置 Claude Code / Codex CLI tmux runner。
 - 工作流程：Discuss、Synthesize、Build、Review、Verify。
 - Decision Inbox：收集 agent 問題、選項、你的決策。
@@ -112,15 +113,33 @@ npm.cmd run dev
 ## 基本工作流
 
 1. 選一個專案。
-2. Start 一個 runner，例如 Claude Code tmux 或 Codex CLI tmux。
-3. 在 Current Task 寫下目前任務。
-4. Send Task 給其中一邊或兩邊 agent。
-5. 用 Session Console 看 live tmux pane，並送追問或決策回覆。
-6. 如果 agent 在 terminal 問問題，按 Capture。
-7. 如果需要另一邊看畫面，按 Snapshot 並選該 agent 的對話視窗。
-8. 在 Decision Inbox 選答案或編輯回覆。
-9. Send decision 給另一個 runner。
-10. Build 階段只讓一個 agent 寫 code，另一個 agent 做 Review。
+2. 開啟或建立這個專案底下的 RelayDesk session。
+3. Start 一個 runner，例如 Claude Code tmux 或 Codex CLI tmux。
+4. 在 Current Task 寫下目前任務。
+5. Send Task 給其中一邊或兩邊 agent。
+6. 用 Session Console 看 live tmux pane，並送追問或決策回覆。
+7. 如果 agent 在 terminal 問問題，按 Capture。
+8. 如果需要另一邊看畫面，按 Snapshot 並選該 agent 的對話視窗。
+9. 在 Decision Inbox 選答案或編輯回覆。
+10. Send decision 給另一個 runner。
+11. Build 階段只讓一個 agent 寫 code，另一個 agent 做 Review。
+
+## Persistent Sessions
+
+Session Registry 會把目前 task、step、decision、evidence list、選到的 runner、
+console output 存到本機。Session 會依專案分開，所以你可以讓不同專案、不同 task
+各自保留上下文。
+
+你可以用它：
+
+- 開新 session 來處理新的 task。
+- 重新整理或重開 RelayDesk 後回到上一個 project task。
+- archive 舊工作但不刪除。
+- 刪除已不需要的 RelayDesk session metadata。
+- 複製簡短 session brief 給另一個 agent。
+
+Session metadata 會存在 `.relaydesk/sessions.json`，這個路徑已經 gitignore。
+刪除 RelayDesk session 不會刪掉 project files、tmux session、或 evidence 圖片檔。
 
 ## Agent Trust Bar
 

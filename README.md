@@ -33,6 +33,7 @@ Example flow:
 ## Current MVP
 
 - Project registry with multiple local projects.
+- Persistent per-project sessions stored locally under `.relaydesk/sessions.json`.
 - Claude Code and Codex CLI tmux runners for each project.
 - Workflow steps: Discuss, Synthesize, Build, Review, Verify.
 - Decision Inbox for agent questions, options, and user decisions.
@@ -112,15 +113,34 @@ config, project paths, tmux, Claude Code, and Codex CLI are ready.
 ## Basic Workflow
 
 1. Select a project.
-2. Start a runner, such as `Claude Code tmux` or `Codex CLI tmux`.
-3. Enter the current task.
-4. Send the task to one or both runners.
-5. Use Session Console to read the live tmux pane and send follow-up input.
-6. Use Capture to pull terminal text into the Decision Inbox.
-7. Use Snapshot to capture the current agent conversation window as evidence.
-8. Choose or edit a decision.
-9. Send that decision to another runner.
-10. Keep one writer during Build and use the other agent for Review.
+2. Open or create a RelayDesk session for that project.
+3. Start a runner, such as `Claude Code tmux` or `Codex CLI tmux`.
+4. Enter the current task.
+5. Send the task to one or both runners.
+6. Use Session Console to read the live tmux pane and send follow-up input.
+7. Use Capture to pull terminal text into the Decision Inbox.
+8. Use Snapshot to capture the current agent conversation window as evidence.
+9. Choose or edit a decision.
+10. Send that decision to another runner.
+11. Keep one writer during Build and use the other agent for Review.
+
+## Persistent Sessions
+
+Session Registry saves the current task, step, decisions, evidence list,
+selected runner, and console output to local disk. Sessions are scoped per
+project, so you can keep separate Vibe Coding workspaces without mixing context.
+
+Use it to:
+
+- create a fresh session before starting a new task;
+- switch back to a previous project task after reload;
+- archive old work without deleting it;
+- delete RelayDesk session metadata when a task no longer matters;
+- copy a compact session brief for another agent.
+
+Session metadata is stored in `.relaydesk/sessions.json`, which is gitignored.
+Deleting a RelayDesk session does not delete project files, tmux sessions, or
+evidence image files.
 
 ## Agent Trust Bar
 

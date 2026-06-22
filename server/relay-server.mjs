@@ -180,6 +180,121 @@ function evidenceDir(project) {
   return resolve(root, ".relaydesk", "evidence", safeSegment(project.id));
 }
 
+function sessionsFile() {
+  return resolve(root, ".relaydesk", "sessions.json");
+}
+
+function emptySessionState(body = {}) {
+  return {
+    activeStep: String(body.activeStep || "Discuss"),
+    task: String(body.task || ""),
+    decisions: Array.isArray(body.decisions) ? body.decisions : [],
+    evidence: Array.isArray(body.evidence) ? body.evidence : [],
+    selectedEvidenceId: String(body.selectedEvidenceId || ""),
+    writerRunnerId: String(body.writerRunnerId || ""),
+    commandRunnerId: String(body.commandRunnerId || ""),
+    consoleOutput: String(body.consoleOutput || "")
+  };
+}
+
+async function readSessionsStore() {
+  try {
+    const data = JSON.parse(await readFile(sessionsFile(), "utf8"));
+    return { sessions: Array.isArray(data.sessions) ? data.sessions : [] };
+  } catch {
+    return { sessions: [] };
+  }
+}
+
+async function writeSessionsStore(store) {
+  const file = sessionsFile();
+  await mkdir(dirname(file), { recursive: true });
+  await writeFile(file, `${JSON.stringify({ sessions: store.sessions || [] }, null, 2)}\n`, "utf8");
+}
+
+function publicSession(session) {
+  return {
+    id: session.id,
+    projectId: session.projectId,
+    title: session.title,
+    status: session.status || "active",
+    createdAt: session.createdAt,
+    updatedAt: session.updatedAt,
+    state: emptySessionState(session.state || {})
+  };
+}
+
+function sessionTitle(body, project) {
+  const title = String(body.title || body.state?.task || "").trim();
+  if (title) return title.length > 72 ? `${title.slice(0, 69)}...` : title;
+  return `${project.name || project.id} session`;
+}
+
+async function listSessions(project) {
+  const store = await readSessionsStore();
+  const sessions = store.sessions
+    .filter((session) => session.projectId === project.id)
+    .map(publicSession)
+    .sort((a, b) => String(b.updatedAt || b.createdAt).localeCompare(String(a.updatedAt || a.createdAt)));
+  return { projectId: project.id, sessions };
+}
+
+async function editSession(project, body) {
+  const action = String(body.action || "");
+  const store = await readSessionsStore();
+  const now = new Date().toISOString();
+
+  if (action === "create") {
+    const id = `session-${safeSegment(project.id)}-${Date.now()}`;
+    const session = {
+      id,
+      projectId: project.id,
+      title: sessionTitle(body, project),
+      status: "active",
+      createdAt: now,
+      updatedAt: now,
+      state: emptySessionState(body.state || {})
+    };
+    store.sessions.unshift(session);
+    await writeSessionsStore(store);
+    return publicSession(session);
+  }
+
+  const session = store.sessions.find((item) => item.projectId === project.id && item.id === body.sessionId);
+  if (!session) throw new Error(`Session not found: ${body.sessionId}`);
+
+  if (action === "update") {
+    session.title = sessionTitle({ title: body.title || session.title, state: body.state || session.state }, project);
+    session.status = body.status === "archived" ? "archived" : "active";
+    session.updatedAt = now;
+    session.state = emptySessionState(body.state || session.state || {});
+    await writeSessionsStore(store);
+    return publicSession(session);
+  }
+
+  if (action === "archive") {
+    session.status = "archived";
+    session.updatedAt = now;
+    await writeSessionsStore(store);
+    return publicSession(session);
+  }
+
+  if (action === "restore") {
+    session.status = "active";
+    session.updatedAt = now;
+    await writeSessionsStore(store);
+    return publicSession(session);
+  }
+
+  if (action === "delete") {
+    store.sessions = store.sessions.filter((item) => !(item.projectId === project.id && item.id === body.sessionId));
+    await writeSessionsStore(store);
+    return publicSession({ ...session, status: "deleted", updatedAt: now });
+  }
+
+  throw new Error(`Unsupported session action: ${action}`);
+}
+
 async function sendEvidenceFile(res, project, name) {
   const filename = safeSegment(name);
   const dir = evidenceDir(project);
@@ -804,6 +919,26 @@ async function route(req, res) {
 
   if (req.method === "GET" && url.pathname === "/api/usage") {
     json(res, 200, usageSnapshot());
+    return;
+  }
+
+  if (req.method === "GET" && url.pathname === "/api/sessions") {
+    const project = findProject(config, url.searchParams.get("projectId"));
+    if (!project) return notFound(res);
+    json(res, 200, await listSessions(project));
+    return;
+  }
+
+  if (req.method === "POST" && url.pathname === "/api/sessions") {
+    const body = await readBody(req);
+    const project = findProject(config, body.projectId);
+    if (!project) return notFound(res);
+    try {
+      const session = await editSession(project, body);
+      json(res, 200, { ok: true, session, at: new Date().toISOString() });
+    } catch (error) {
+      json(res, 400, { ok: false, error: String(error) });
+    }
     return;
   }
 
