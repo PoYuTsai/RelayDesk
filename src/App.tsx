@@ -2494,6 +2494,15 @@ export function App() {
     };
   }, [activeProject?.id, liveRunnerKey]);
 
+  useEffect(() => {
+    const frame = window.requestAnimationFrame(() => {
+      document.querySelectorAll<HTMLElement>(".focus-agent-output, .focus-console-output").forEach((element) => {
+        element.scrollTop = element.scrollHeight;
+      });
+    });
+    return () => window.cancelAnimationFrame(frame);
+  }, [activeProject?.id, runnerPaneOutputs, consoleOutput]);
+
   async function runRunner(
     runner: Runner,
     action: "start" | "stop" | "restart" | "status" | "capture" | "send" | "open",

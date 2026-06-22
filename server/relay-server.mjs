@@ -1606,13 +1606,21 @@ async function stopTmuxRunner(project, runner) {
 }
 
 async function captureTmuxRunner(project, runner) {
-  return runTmux(project, runner, ["capture-pane", "-p", "-t", runner.session], 10000);
+  return runTmux(project, runner, ["capture-pane", "-p", "-S", "-200", "-t", runner.session], 10000);
 }
 
 async function sendTmuxRunner(project, runner, text) {
   const value = String(text || "").trim();
   if (!value) return { ok: false, code: -1, stdout: "", stderr: "No text to send." };
-  return runTmux(project, runner, ["send-keys", "-t", runner.session, "--", value, "Enter"], 10000);
+  const typed = await runTmux(project, runner, ["send-keys", "-l", "-t", runner.session, "--", value], 10000);
+  await sleep(120);
+  const enter = typed.ok ? await runTmux(project, runner, ["send-keys", "-t", runner.session, "Enter"], 10000) : typed;
+  return {
+    ok: typed.ok && enter.ok,
+    code: enter.code,
+    stdout: [typed.stdout, enter.stdout].filter(Boolean).join("\n"),
+    stderr: [typed.stderr, enter.stderr].filter(Boolean).join("\n")
+  };
 }
 
 async function dismissStartupPrompts(project, runner) {
