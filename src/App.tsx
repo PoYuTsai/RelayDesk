@@ -3548,23 +3548,37 @@ export function App() {
                 </div>
                 <div className="focus-agent-actions">
                   <button
+                    className="main-action"
                     aria-label={`${ui.console.start} ${runner.session}`}
                     title={`${ui.console.start} ${runner.session}`}
                     disabled={!!busyRunner || runner.state === "running"}
                     onClick={() => void runRunner(runner, "start", { onSuccess: () => setCommandRunnerId(runner.id) })}
                   >
                     <Play size={13} />
+                    {ui.console.start}
+                  </button>
+                  <button
+                    className="main-action enter-action"
+                    aria-label={`${ui.console.open} ${runner.session}`}
+                    title={`${ui.console.open} ${runner.session}`}
+                    disabled={!!busyRunner}
+                    onClick={() => void runRunner(runner, "open")}
+                  >
+                    <Terminal size={13} />
+                    {ui.console.open}
                   </button>
                   <button
                     aria-label={`Kill ${runner.session}`}
                     title={`Kill ${runner.session}`}
-                    className="danger-action"
+                    className="main-action danger-action"
                     disabled={!!busyRunner || runner.state !== "running"}
                     onClick={() => void runRunner(runner, "stop")}
                   >
                     <Square size={13} />
+                    Kill
                   </button>
                   <button
+                    className="secondary-action"
                     aria-label={`${ui.console.capturePane} ${runner.session}`}
                     title={`${ui.console.capturePane} ${runner.session}`}
                     disabled={!!busyRunner || runner.state !== "running"}
@@ -3574,22 +3588,17 @@ export function App() {
                     }}
                   >
                     <FileDiff size={13} />
+                    {ui.console.capturePane}
                   </button>
                   <button
+                    className="secondary-action"
                     aria-label={`${ui.console.snapshot} ${runner.session}`}
                     title={`${ui.console.snapshot} ${runner.session}`}
                     disabled={!!busyRunner}
                     onClick={() => void snapshotRunner(runner)}
                   >
                     <Camera size={13} />
-                  </button>
-                  <button
-                    aria-label={`${ui.console.open} ${runner.session}`}
-                    title={`${ui.console.open} ${runner.session}`}
-                    disabled={!!busyRunner}
-                    onClick={() => void runRunner(runner, "open")}
-                  >
-                    <Terminal size={13} />
+                    {ui.console.snapshot}
                   </button>
                 </div>
               </article>

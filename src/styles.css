@@ -354,8 +354,30 @@ button {
 .focus-agent-actions {
   flex: 0 0 auto;
   display: grid;
-  grid-template-columns: repeat(5, minmax(0, 1fr));
+  grid-template-columns: repeat(6, minmax(0, 1fr));
   gap: 8px;
+}
+
+.focus-agent-actions button {
+  min-width: 0;
+  padding: 0 8px;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.focus-agent-actions .main-action {
+  grid-column: span 2;
+}
+
+.focus-agent-actions .secondary-action {
+  grid-column: span 3;
+}
+
+.focus-agent-actions .enter-action {
+  color: #061411;
+  background: var(--accent);
+  border-color: rgba(45, 212, 191, 0.78);
 }
 
 .focus-agent-actions .danger-action {
