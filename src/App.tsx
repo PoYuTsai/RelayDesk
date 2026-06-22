@@ -584,6 +584,7 @@ const uiCopy: Record<
       autoRefresh: (on: boolean) => string;
       open: string;
       start: string;
+      stop: string;
       snapshot: string;
       noRunner: string;
       lastRead: (time: string) => string;
@@ -746,11 +747,12 @@ const uiCopy: Record<
     console: {
       label: "Session Console",
       title: "Live tmux pane",
-      capturePane: "Capture Pane",
+      capturePane: "Sync pane",
       autoRefresh: (on) => `Auto refresh ${on ? "on" : "off"}`,
-      open: "Enter",
-      start: "Start",
-      snapshot: "Snapshot",
+      open: "Open terminal",
+      start: "Start agent",
+      stop: "Stop",
+      snapshot: "Send screenshot",
       noRunner: "No runner",
       lastRead: (time) => `Last pane read ${time}`,
       noRead: "No pane read yet",
@@ -911,11 +913,12 @@ const uiCopy: Record<
     console: {
       label: "Session Console",
       title: "Live tmux 視窗",
-      capturePane: "擷取畫面",
+      capturePane: "同步畫面",
       autoRefresh: (on) => `自動刷新 ${on ? "開" : "關"}`,
-      open: "進入",
-      start: "啟動",
-      snapshot: "截圖",
+      open: "開啟終端機",
+      start: "啟動 agent",
+      stop: "停止",
+      snapshot: "截圖交給對方",
       noRunner: "沒有 runner",
       lastRead: (time) => `上次讀取 ${time}`,
       noRead: "尚未讀取 tmux",
@@ -4385,6 +4388,7 @@ export function App() {
             const avatar = runnerAvatar(runner);
             const configRunner = findConfigRunner(activeConfigProject, runner);
             const startSummary = runnerStartSummary(configRunner);
+            const runnerDetailTitle = [runner.session, startSummary].filter(Boolean).join("\n");
             const runnerConsoleOutput = consoleOutputRunnerId === runner.id ? consoleOutput : "";
             const livePane = runnerPaneOutputs[runner.id];
             const paneOutput = runnerConsoleOutput || livePane?.output || "";
@@ -4409,10 +4413,8 @@ export function App() {
                 <div className="focus-agent-head">
                   <div className="agent-title-row">
                     <AgentAvatar className="agent-avatar" asset={avatar} />
-                    <div>
+                    <div title={runnerDetailTitle || runner.session}>
                       <strong>{shortRunnerName(runner.name)}</strong>
-                      <span>{runner.session}</span>
-                      {startSummary && <small>{startSummary}</small>}
                     </div>
                   </div>
                   <div>
@@ -4468,14 +4470,14 @@ export function App() {
                     {ui.console.open}
                   </button>
                   <button
-                    aria-label={`Kill ${runner.session}`}
-                    title={`Kill ${runner.session}`}
+                    aria-label={`${ui.console.stop} ${runner.session}`}
+                    title={`${ui.console.stop} ${runner.session}`}
                     className="main-action danger-action"
                     disabled={!!busyRunner}
                     onClick={() => void runRunner(runner, "stop")}
                   >
                     <Square size={13} />
-                    Kill
+                    {ui.console.stop}
                   </button>
                   <button
                     className="secondary-action"
