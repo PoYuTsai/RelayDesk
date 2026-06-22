@@ -42,6 +42,7 @@ RelayDesk 的目標是把這個來回變成：
 - Evidence tray：放截圖、影片、log、repro material。
 - Git 狀態和 diff stat。
 - Doctor checks：檢查本機環境、CLI、tmux、專案路徑、gitignore 安全性。
+- 第一次使用 checklist：用繁中/英文引導新手完成 config、project、runner、Doctor、Start。
 - Usage/activity：追蹤本機送出、capture、snapshot、session 等活動量。
 
 ## 前置需求

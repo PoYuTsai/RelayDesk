@@ -342,6 +342,121 @@ const setupCopy: Record<
   }
 };
 
+type SetupText = {
+  label: string;
+  title: string;
+  subtitle: string;
+  install: string;
+  config: string;
+  run: string;
+  copied: string;
+  checks: {
+    config: string;
+    paths: string;
+    terminal: string;
+    agents: string;
+  };
+  commands: {
+    install: string;
+    config: string;
+    run: string;
+  };
+  compat: string;
+  docs: string;
+  onboarding: {
+    title: string;
+    subtitle: string;
+    ready: string;
+    steps: Record<"config" | "project" | "runner" | "doctor" | "start", { label: string; detail: string }>;
+    actions: Record<"config" | "project" | "runner" | "doctor" | "start", string>;
+  };
+};
+
+const cleanSetupCopy: Record<Lang, SetupText> = {
+  en: {
+    label: "Setup",
+    title: "Quick start guide",
+    subtitle: "Use Doctor as the source of truth, then copy the commands you need.",
+    install: "Install deps",
+    config: "Copy config",
+    run: "Run app",
+    copied: "Copied",
+    checks: {
+      config: "Local config loaded",
+      paths: "Project paths exist",
+      terminal: "WSL/tmux ready",
+      agents: "Agent CLIs found"
+    },
+    commands: {
+      install: "npm.cmd install",
+      config: "Copy-Item relay.config.example.json relay.local.json",
+      run: "npm.cmd run api\nnpm.cmd run dev"
+    },
+    compat: "Compatibility",
+    docs: "README + setup docs",
+    onboarding: {
+      title: "First-run checklist",
+      subtitle: "Work from top to bottom. RelayDesk writes local config only; it never edits your project code.",
+      ready: "Ready for a first agent run",
+      steps: {
+        config: { label: "Create local config", detail: "Use relay.local.json before real project work." },
+        project: { label: "Add a real project path", detail: "Point RelayDesk at the folder you want agents to work in." },
+        runner: { label: "Add at least one runner", detail: "Claude Code, Codex CLI, or a custom tmux session." },
+        doctor: { label: "Run Doctor checks", detail: "Confirm git, tmux, paths, and agent CLIs are reachable." },
+        start: { label: "Start a runner", detail: "Open the live tmux pane before sending tasks or slash commands." }
+      },
+      actions: {
+        config: "Copy config",
+        project: "Add project",
+        runner: "Add runner",
+        doctor: "Refresh",
+        start: "Runner Ops"
+      }
+    }
+  },
+  "zh-TW": {
+    label: "設定",
+    title: "快速開始",
+    subtitle: "先看 Doctor 結果，再複製需要的指令。",
+    install: "安裝套件",
+    config: "複製設定",
+    run: "啟動程式",
+    copied: "已複製",
+    checks: {
+      config: "本機設定已載入",
+      paths: "專案路徑存在",
+      terminal: "WSL/tmux 可用",
+      agents: "Agent CLI 已找到"
+    },
+    commands: {
+      install: "npm.cmd install",
+      config: "Copy-Item relay.config.example.json relay.local.json",
+      run: "npm.cmd run api\nnpm.cmd run dev"
+    },
+    compat: "相容性",
+    docs: "README 與設定文件",
+    onboarding: {
+      title: "第一次使用 checklist",
+      subtitle: "照順序完成即可。RelayDesk 只寫本機設定，不會改你的專案程式碼。",
+      ready: "可以開始第一輪 agent 任務",
+      steps: {
+        config: { label: "建立本機設定", detail: "正式使用前請先有 relay.local.json。" },
+        project: { label: "加入真實專案路徑", detail: "指向你要讓 agent 工作的資料夾。" },
+        runner: { label: "至少加入一個 runner", detail: "Claude Code、Codex CLI，或自訂 tmux session。" },
+        doctor: { label: "跑 Doctor 檢查", detail: "確認 git、tmux、路徑、agent CLI 都能連到。" },
+        start: { label: "啟動 runner", detail: "先看到 live tmux pane，再送 task 或 slash command。" }
+      },
+      actions: {
+        config: "複製設定",
+        project: "加專案",
+        runner: "加 runner",
+        doctor: "重新整理",
+        start: "Runner Ops"
+      }
+    }
+  }
+};
+
 const seedEvidence: Evidence[] = [
   { id: "ev-1", name: "opener-upload-failure.png", kind: "image", size: "1280x720" },
   { id: "ev-2", name: "dogfood-repro.mp4", kind: "video", size: "6 frames" },
@@ -715,6 +830,10 @@ function clientId(value: string, fallback = "item") {
   );
 }
 
+function looksLikePlaceholderPath(path: string) {
+  return /(?:C:\\path\\to\\|\/path\/to\/|\\MyApp\b|\/MyApp\b)/i.test(path);
+}
+
 export function App() {
   const [projects, setProjects] = useState<Project[]>([]);
   const [projectId, setProjectId] = useState("");
@@ -791,7 +910,7 @@ export function App() {
     return new Map((doctor?.checks || []).map((item) => [item.id, item]));
   }, [doctor]);
 
-  const setup = setupCopy[lang];
+  const setup = cleanSetupCopy[lang];
 
   const commandRunner = useMemo(() => {
     return runners.find((runner) => runner.id === commandRunnerId) || runners.find((runner) => runner.state === "running") || runners[0];
@@ -882,6 +1001,73 @@ export function App() {
       }
     ] satisfies Array<{ id: string; label: string; status: DoctorCheck["status"]; detail: string }>;
   }, [doctor?.checks, doctorById, setup]);
+
+  const onboardingSteps = useMemo(() => {
+    const projectPath = activeProject?.path || "";
+    const projectCheck = activeProject ? doctorById.get(`project-${activeProject.id}`) : undefined;
+    const runnerCount = activeConfigProject?.runners?.length || 0;
+    const runningCount = runners.filter((runner) => runner.state === "running").length;
+    const localConfigReady = config?.source.kind === "local";
+    const projectReady = Boolean(projectPath && !looksLikePlaceholderPath(projectPath) && projectCheck?.status !== "fail");
+    const runnerReady = runnerCount > 0;
+    const doctorReady = Boolean(doctor && doctor.summary.fail === 0);
+    const startReady = runningCount > 0;
+    const stepCopy = setup.onboarding.steps;
+    const actionCopy = setup.onboarding.actions;
+
+    return [
+      {
+        id: "config",
+        status: localConfigReady ? "ok" : "warn",
+        label: stepCopy.config.label,
+        detail: localConfigReady ? config?.source.path || stepCopy.config.detail : "Using example config. Create relay.local.json before real work.",
+        action: actionCopy.config,
+        target: "config"
+      },
+      {
+        id: "project",
+        status: projectReady ? "ok" : projectCheck?.status === "fail" ? "fail" : "warn",
+        label: stepCopy.project.label,
+        detail: projectReady ? projectPath : projectCheck?.detail || stepCopy.project.detail,
+        action: actionCopy.project,
+        target: "project"
+      },
+      {
+        id: "runner",
+        status: runnerReady ? "ok" : "warn",
+        label: stepCopy.runner.label,
+        detail: runnerReady ? `${runnerCount} runner session${runnerCount === 1 ? "" : "s"} configured` : stepCopy.runner.detail,
+        action: actionCopy.runner,
+        target: "runner"
+      },
+      {
+        id: "doctor",
+        status: doctorReady ? "ok" : doctor?.summary.fail ? "fail" : "warn",
+        label: stepCopy.doctor.label,
+        detail: doctor ? `${doctor.summary.ok} ok / ${doctor.summary.warn} warn / ${doctor.summary.fail} fail` : stepCopy.doctor.detail,
+        action: actionCopy.doctor,
+        target: "doctor"
+      },
+      {
+        id: "start",
+        status: startReady ? "ok" : "warn",
+        label: stepCopy.start.label,
+        detail: startReady ? `${runningCount} runner${runningCount === 1 ? "" : "s"} running` : stepCopy.start.detail,
+        action: actionCopy.start,
+        target: "start"
+      }
+    ] satisfies Array<{
+      id: "config" | "project" | "runner" | "doctor" | "start";
+      status: DoctorCheck["status"];
+      label: string;
+      detail: string;
+      action: string;
+      target: "config" | "project" | "runner" | "doctor" | "start";
+    }>;
+  }, [activeConfigProject?.runners, activeProject, config?.source.kind, config?.source.path, doctor, doctorById, runners, setup]);
+
+  const nextOnboardingStep = useMemo(() => onboardingSteps.find((step) => step.status !== "ok"), [onboardingSteps]);
+  const completedOnboardingSteps = onboardingSteps.filter((step) => step.status === "ok").length;
 
   function currentSessionState(): RelaySessionState {
     return {
@@ -1803,6 +1989,35 @@ export function App() {
     }
   }
 
+  function focusOnboardingTarget(target: "project" | "runner" | "doctor" | "start") {
+    const selector =
+      target === "project"
+        ? "[data-onboarding-target='project']"
+        : target === "runner"
+          ? "[data-onboarding-target='runner']"
+          : target === "doctor"
+            ? "[data-onboarding-target='doctor']"
+            : "[data-onboarding-target='start']";
+    const element = document.querySelector(selector) as HTMLElement | null;
+    element?.scrollIntoView({ behavior: "smooth", block: "center" });
+    if (element instanceof HTMLInputElement || element instanceof HTMLTextAreaElement || element instanceof HTMLSelectElement || element instanceof HTMLButtonElement) {
+      element.focus();
+    }
+  }
+
+  function runOnboardingAction(step: (typeof onboardingSteps)[number]) {
+    if (step.id === "config") {
+      void copySetupCommand("onboarding-config", setup.commands.config);
+      return;
+    }
+    if (step.id === "doctor") {
+      if (activeProject) void refresh(activeProject);
+      focusOnboardingTarget("doctor");
+      return;
+    }
+    focusOnboardingTarget(step.target);
+  }
+
   async function copySessionBrief() {
     const text = buildSessionBrief({
       sessionKey,
@@ -2621,6 +2836,29 @@ export function App() {
               </div>
             ))}
           </div>
+          <div className="onboarding-panel">
+            <div className="onboarding-head">
+              <div>
+                <strong>{setup.onboarding.title}</strong>
+                <span>{nextOnboardingStep ? setup.onboarding.subtitle : setup.onboarding.ready}</span>
+              </div>
+              <em>{completedOnboardingSteps}/{onboardingSteps.length}</em>
+            </div>
+            <div className="onboarding-list">
+              {onboardingSteps.map((step, index) => (
+                <div className={cx("onboarding-step", step.status, nextOnboardingStep?.id === step.id && "current")} key={step.id}>
+                  <span className="onboarding-index">{step.status === "ok" ? <Check size={13} /> : index + 1}</span>
+                  <div>
+                    <strong>{step.label}</strong>
+                    <small>{step.detail}</small>
+                  </div>
+                  <button onClick={() => runOnboardingAction(step)}>
+                    {copiedSetup === "onboarding-config" && step.id === "config" ? setup.copied : step.action}
+                  </button>
+                </div>
+              ))}
+            </div>
+          </div>
           <div className="compat-box">
             <div className="compat-head">
               <ListChecks size={14} />
@@ -2680,7 +2918,7 @@ export function App() {
               <strong>Add project</strong>
               <span>Writes to relay.local.json</span>
             </div>
-            <input value={newProjectName} onChange={(event) => setNewProjectName(event.target.value)} placeholder="Project name" />
+            <input data-onboarding-target="project" value={newProjectName} onChange={(event) => setNewProjectName(event.target.value)} placeholder="Project name" />
             <input value={newProjectPath} onChange={(event) => setNewProjectPath(event.target.value)} placeholder="C:\\path\\to\\project" />
             <button disabled={!!configBusy || !newProjectName.trim() || !newProjectPath.trim()} onClick={() => void addProjectConfig()}>
               <Plus size={13} />
@@ -2709,7 +2947,7 @@ export function App() {
               <option value="codex-cli">Codex CLI tmux</option>
               <option value="custom">Custom tmux</option>
             </select>
-            <input value={runnerSession} onChange={(event) => setRunnerSession(event.target.value)} placeholder={runnerPreset.session} />
+            <input data-onboarding-target="runner" value={runnerSession} onChange={(event) => setRunnerSession(event.target.value)} placeholder={runnerPreset.session} />
             <input value={runnerCwd} onChange={(event) => setRunnerCwd(event.target.value)} placeholder={runnerPreset.cwd || "tmux cwd"} />
             <textarea
               value={runnerStartCommand}
@@ -2738,7 +2976,7 @@ export function App() {
           </div>
         </section>
 
-        <section className="ops-card">
+        <section className="ops-card" data-onboarding-target="doctor">
           <div className="panel-head">
             <div>
               <div className="section-label">Readiness</div>
@@ -2811,7 +3049,7 @@ export function App() {
           <p className="usage-note">Tracks local actions only. It does not estimate model billing or provider tokens.</p>
         </section>
 
-        <section className="ops-card">
+        <section className="ops-card" data-onboarding-target="start">
           <div className="panel-head">
             <div>
               <div className="section-label">Runner Ops</div>

@@ -46,6 +46,7 @@ Example flow:
 - Evidence tray for screenshots, videos, logs, and repro material.
 - Git status and diff stat panel.
 - Doctor checks for local setup readiness and release-safety ignores.
+- First-run setup checklist with English and Traditional Chinese copy.
 - Local usage/activity visibility for messages, captures, snapshots, sessions,
   and rough output size.
 

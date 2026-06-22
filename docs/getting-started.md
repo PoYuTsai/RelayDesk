@@ -129,8 +129,9 @@ pane, and kills that temporary session. This verifies that Start, Send, Capture,
 and Stop have a real chance of working before you launch a long agent task.
 
 The Setup card can be switched between English and Traditional Chinese. It shows
-the same readiness state in a shorter beginner-friendly form and includes copy
-buttons for common install/config/run commands.
+the same readiness state in a shorter beginner-friendly form, includes a
+first-run checklist, and provides copy buttons for common install/config/run
+commands.
 
 ## 6. Manage projects and sessions
 

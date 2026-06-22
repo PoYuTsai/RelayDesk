@@ -1626,6 +1626,132 @@ h2 {
   white-space: nowrap;
 }
 
+.onboarding-panel {
+  margin-top: 12px;
+  padding: 11px;
+  background: #0d1015;
+  border: 1px solid var(--line-soft);
+  border-radius: 8px;
+}
+
+.onboarding-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.onboarding-head strong,
+.onboarding-head span {
+  display: block;
+}
+
+.onboarding-head strong {
+  font-size: 13px;
+}
+
+.onboarding-head span {
+  margin-top: 3px;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.35;
+}
+
+.onboarding-head em {
+  flex: 0 0 auto;
+  color: var(--accent);
+  font-size: 12px;
+  font-style: normal;
+  font-weight: 900;
+}
+
+.onboarding-list {
+  display: grid;
+  gap: 7px;
+  margin-top: 11px;
+}
+
+.onboarding-step {
+  display: grid;
+  grid-template-columns: 24px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  padding: 8px;
+  background: var(--panel-2);
+  border: 1px solid var(--line-soft);
+  border-radius: 8px;
+}
+
+.onboarding-step.current {
+  border-color: rgba(45, 212, 191, 0.42);
+  box-shadow: 0 0 0 1px rgba(45, 212, 191, 0.08);
+}
+
+.onboarding-index {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  color: var(--muted);
+  background: #090c10;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 900;
+}
+
+.onboarding-step.ok .onboarding-index {
+  color: #061411;
+  background: var(--ok);
+  border-color: transparent;
+}
+
+.onboarding-step.warn .onboarding-index {
+  color: var(--warn);
+}
+
+.onboarding-step.fail .onboarding-index {
+  color: var(--danger);
+}
+
+.onboarding-step strong,
+.onboarding-step small {
+  display: block;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.onboarding-step strong {
+  font-size: 12px;
+}
+
+.onboarding-step small {
+  margin-top: 2px;
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.onboarding-step button {
+  height: 28px;
+  padding: 0 9px;
+  color: var(--text);
+  background: #090c10;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  cursor: pointer;
+  font-size: 11px;
+  font-weight: 900;
+  white-space: nowrap;
+}
+
+.onboarding-step button:hover {
+  border-color: rgba(45, 212, 191, 0.36);
+}
+
 .compat-box {
   margin-top: 12px;
   padding: 11px;
@@ -2348,6 +2474,15 @@ pre {
 
   .console-command-bar {
     grid-template-columns: 1fr;
+  }
+
+  .onboarding-step {
+    grid-template-columns: 24px minmax(0, 1fr);
+  }
+
+  .onboarding-step button {
+    grid-column: 2;
+    justify-self: start;
   }
 
   .evidence-list {

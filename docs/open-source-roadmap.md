@@ -84,7 +84,7 @@ Current v1:
 
 - `/api/doctor` returns local readiness checks.
 - The web UI shows a Doctor panel with ok/warn/fail counts and actionable details.
-- The web UI includes a bilingual Setup card for quick start commands, setup readiness, and compatibility summary.
+- The web UI includes a bilingual Setup card for quick start commands, setup readiness, first-run onboarding steps, and compatibility summary.
 - Project Manager can add/remove projects and tmux runner session config in `relay.local.json`.
 
 Language support:
@@ -97,6 +97,7 @@ Language support:
 Current i18n scope:
 
 - `en` and `zh-TW` switch exists for the Setup card.
+- First-run setup copy is available in English and Traditional Chinese.
 - Existing product workflow labels remain English until the copy map is expanded.
 - Documentation exists in English and Traditional Chinese README form.
 
