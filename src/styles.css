@@ -423,10 +423,7 @@ button {
   width: 52px;
   height: 52px;
   display: block;
-  border: 1px solid rgba(226, 232, 240, 0.12);
-  border-radius: 16px;
-  background: #11161d;
-  box-shadow: 0 10px 24px rgba(0, 0, 0, 0.2);
+  object-fit: contain;
 }
 
 .focus-agent-head strong,
@@ -476,86 +473,41 @@ button {
   text-transform: uppercase;
 }
 
-.agent-usage-strip {
-  flex: 0 0 auto;
-  width: 100%;
-  display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 6px;
-  margin-top: 10px;
-  padding: 0;
-  color: inherit;
-  text-align: left;
-  background: transparent;
-  border: 0;
-  cursor: pointer;
-}
-
-.agent-usage-strip span {
-  min-width: 0;
-  height: 30px;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 6px;
-  padding: 0 8px;
-  color: var(--muted);
-  background: rgba(255, 255, 255, 0.035);
-  border: 1px solid var(--line-soft);
-  border-radius: 7px;
-}
-
-.agent-usage-strip small,
-.agent-usage-strip strong {
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.agent-usage-strip small {
-  color: var(--faint);
-  font-size: 10px;
-  font-weight: 800;
-  text-transform: uppercase;
-}
-
-.agent-usage-strip strong {
-  color: var(--text);
-  font-size: 12px;
-  font-weight: 850;
-}
-
-.agent-usage-strip:not(:disabled):hover span {
-  border-color: rgba(45, 212, 191, 0.34);
-  background: rgba(45, 212, 191, 0.055);
-}
-
-.agent-usage-strip:focus-visible {
-  border-radius: 8px;
-  outline: 2px solid rgba(45, 212, 191, 0.5);
-  outline-offset: 2px;
-}
-
-.agent-usage-strip:disabled {
-  cursor: default;
-}
-
 .focus-agent-output {
   min-height: 0;
   flex: 1 1 auto;
-  margin: 10px 0;
+  margin: 12px 0 10px;
   padding: 12px;
   overflow: auto;
-  color: #f7f2ff;
+  color: #dacbd4;
   background: #300a24;
-  border: 1px solid rgba(255, 255, 255, 0.16);
+  border: 1px solid rgba(255, 214, 232, 0.16);
   border-radius: 8px;
   font-family: ui-monospace, SFMono-Regular, Consolas, "Liberation Mono", monospace;
   font-size: 13px;
   line-height: 1.5;
   scrollbar-color: rgba(255, 255, 255, 0.28) transparent;
   white-space: pre-wrap;
+}
+
+.terminal-output-line {
+  min-height: 1.5em;
+  display: block;
+}
+
+.terminal-output-line.logo {
+  color: #d9898d;
+  font-weight: 850;
+}
+
+.terminal-output-line.header {
+  color: #cdbac4;
+  font-weight: 800;
+}
+
+.terminal-output-line.warn {
+  color: #ff8cb3;
+  font-weight: 850;
 }
 
 .focus-agent-output::-webkit-scrollbar {
@@ -650,7 +602,7 @@ button {
 .focus-agent-actions {
   flex: 0 0 auto;
   display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 8px;
 }
 
@@ -660,18 +612,6 @@ button {
   overflow: hidden;
   white-space: nowrap;
   text-overflow: ellipsis;
-}
-
-.focus-agent-actions .main-action {
-  grid-column: auto;
-}
-
-.focus-agent-actions .secondary-action {
-  grid-column: auto;
-}
-
-.focus-agent-actions .screenshot-action {
-  grid-column: auto;
 }
 
 .focus-agent-actions .enter-action {
@@ -719,9 +659,7 @@ button {
   width: 42px;
   height: 42px;
   display: block;
-  border: 1px solid rgba(226, 232, 240, 0.12);
-  border-radius: 13px;
-  background: #11161d;
+  object-fit: contain;
 }
 
 .composer-target-button {
@@ -1052,9 +990,6 @@ button {
   height: 38px;
   display: block;
   justify-self: center;
-  border: 1px solid rgba(226, 232, 240, 0.12);
-  border-radius: 10px;
-  background: #11161d;
   object-fit: contain;
 }
 
@@ -1532,9 +1467,7 @@ button {
   width: 30px;
   height: 30px;
   display: block;
-  border: 1px solid rgba(226, 232, 240, 0.12);
-  border-radius: 9px;
-  background: #11161d;
+  object-fit: contain;
 }
 
 .runner-mini-avatar-wrap .runner-dot {

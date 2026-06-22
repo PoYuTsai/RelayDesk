@@ -459,13 +459,11 @@ const aiRoomAvatar: AgentAvatarAsset = {
 };
 const agentAvatars: Record<string, AgentAvatarAsset> = {
   "claude-code": {
-    src: "/assets/agents.local/claude-code.png",
-    fallbackSrc: "/assets/agents/claude-code.svg",
+    src: "/assets/agents/claude-code.svg",
     alt: "Claude Code"
   },
   "codex-cli": {
-    src: "/assets/agents.local/codex.png",
-    fallbackSrc: "/assets/agents/codex.svg",
+    src: "/assets/agents/codex.svg",
     alt: "Codex"
   }
 };
@@ -1700,6 +1698,47 @@ function runnerAvatar(runner: Runner | undefined) {
   return agentAvatars[runner.id] || aiRoomAvatar;
 }
 
+function runnerOpenLabel(runner: Runner, lang: Lang) {
+  const running = runner.state === "running";
+  if (lang === "zh-TW") return running ? "進入 tmux" : "開始 / 進入";
+  return running ? "Open tmux" : "Start / open";
+}
+
+function composerPlaceholder(targetIsBoth: boolean, runner: Runner | undefined, lang: Lang) {
+  const zh = lang === "zh-TW";
+  if (targetIsBoth) {
+    return zh
+      ? "輸入同一段訊息給兩邊；/ 指令請先選 Claude Code 或 Codex。"
+      : "Send the same message to both agents. Pick one agent for slash commands.";
+  }
+  if (runner?.id === "claude-code") {
+    return zh ? "輸入 task、決策回覆、/help、/clear、/compact..." : "Type a task, decision reply, /help, /clear, /compact...";
+  }
+  if (runner?.id === "codex-cli") {
+    return zh ? "輸入 task、review 請求、/help、/model..." : "Type a task, review request, /help, /model...";
+  }
+  return zh ? "輸入 task 或決策回覆..." : "Type a task or decision reply...";
+}
+
+function terminalLineClass(line: string, index: number, runner: Runner) {
+  if (/Remote Control failed|Auto-update failed|MCP server failed|failed/i.test(line)) return "warn";
+  if (runner.id === "claude-code" && index < 10 && /[\u2580-\u259f]/.test(line)) return "logo";
+  if (runner.id === "claude-code" && index < 10 && /Claude Code|Opus|Claude Max/.test(line)) return "header";
+  return "";
+}
+
+function TerminalOutput({ text, runner }: { text: string; runner: Runner }) {
+  return (
+    <>
+      {text.split(/\r?\n/).map((line, index) => (
+        <span className={cx("terminal-output-line", terminalLineClass(line, index, runner))} key={`${index}-${line.slice(0, 18)}`}>
+          {line}
+        </span>
+      ))}
+    </>
+  );
+}
+
 function findConfigRunner(project: ConfigProject | undefined, runner: Runner) {
   return (project?.runners || []).find((item) => item.id === runner.id || item.session === runner.session);
 }
@@ -1794,46 +1833,6 @@ function runnerRemoteStatus(runner: Runner, configRunner: ConfigRunner | undefin
     status: "warn" as const,
     label: runner.state === "running" ? (zh ? "Remote 未啟動" : "Remote not active") : (zh ? "Remote 離線" : "Remote off")
   };
-}
-
-function cleanStatusValue(value = "") {
-  const normalized = value.replace(/\s+/g, " ").trim();
-  if (!normalized || /^N\/A$/i.test(normalized)) return "—";
-  return normalized;
-}
-
-function parseLimitStatus(output: string, pattern: RegExp) {
-  const match = output.match(pattern);
-  if (!match) return { left: "", reset: "" };
-  const rawLeft = cleanStatusValue(match[1] || match[3] || "");
-  return {
-    left: /^\d{1,3}$/.test(rawLeft) ? `${rawLeft}%` : rawLeft,
-    reset: cleanStatusValue(match[2] || match[4] || "")
-  };
-}
-
-function runnerStatusMetrics(output: string, lang: Lang) {
-  const text = output || "";
-  const zh = lang === "zh-TW";
-  const contextLeft =
-    text.match(/(\d{1,3})%\s+context\s+left/i)?.[1] ||
-    text.match(/\bContext\s+(\d{1,3})%/i)?.[1] ||
-    text.match(/[（(](\d{1,3})\s*context[)）]/i)?.[1] ||
-    "";
-  const codexFiveHour = parseLimitStatus(text, /5h limit:\s*[\s\S]*?(\d{1,3})%\s+left(?:\s+\(resets\s+([^)]+)\))?/i);
-  const codexWeekly = parseLimitStatus(text, /Weekly limit:\s*[\s\S]*?(\d{1,3})%\s+left(?:\s+\(resets\s+([^)]+)\))?/i);
-  const claudeFiveHour = parseLimitStatus(text, /5小時額度\s+([^·\n]+?)(?:\s+重置\s+([^·\n]+))?(?=\s*·|\n|$)/i);
-  const claudeWeekly = parseLimitStatus(text, /7天額度\s+([^·\n]+?)(?:\s+重置\s+([^·\n]+))?(?=\s*·|\n|$)/i);
-  const fiveHour = codexFiveHour.left && codexFiveHour.left !== "—" ? codexFiveHour : claudeFiveHour;
-  const weekly = codexWeekly.left && codexWeekly.left !== "—" ? codexWeekly : claudeWeekly;
-  const reset = cleanStatusValue(fiveHour.reset && fiveHour.reset !== "—" ? fiveHour.reset : weekly.reset);
-
-  return [
-    { label: zh ? "上下文" : "Context", value: contextLeft ? `${contextLeft}%` : "—" },
-    { label: "5h", value: fiveHour.left || "—" },
-    { label: "7d", value: weekly.left || "—" },
-    { label: zh ? "重置" : "Reset", value: reset || "—" }
-  ];
 }
 
 function toWslPathClient(path: string) {
@@ -3320,29 +3319,6 @@ export function App() {
     }
   }
 
-  async function refreshRunnerStatus(runner: Runner) {
-    if (runner.state !== "running") {
-      const message = `${runner.session} is not running. Start it before refreshing status.`;
-      replaceConsoleOutput(runner.id, message, "error");
-      setLastRunnerOutput(message);
-      return;
-    }
-    setBusyRunner(`${runner.id}:status-refresh`);
-    try {
-      await postRunnerAction(runner, "send", { text: "/status" });
-      appendConsoleOutput(runner.id, `[RelayDesk status -> ${runner.session}]\n/status`);
-      await new Promise<void>((resolve) => window.setTimeout(resolve, 900));
-      await captureConsole(runner, { mode: "peek", silent: true });
-      await refresh(activeProject);
-    } catch (error) {
-      const message = `Status refresh failed: ${String(error)}`;
-      replaceConsoleOutput(runner.id, message, "error");
-      setLastRunnerOutput(message);
-    } finally {
-      setBusyRunner(null);
-    }
-  }
-
   async function captureConsole(
     runner = commandRunner,
     options: { mode?: "peek" | "capture"; silent?: boolean } = {}
@@ -4456,6 +4432,7 @@ export function App() {
   const composerAccessLabel = composerAccessOptions.find((option) => option.value === composerAccessValue)?.label || "Access";
   const composerEffortLabel = composerEffortOptions.find((option) => option.value === composerEffortValue)?.label || "Effort";
   const composerSpeedLabel = composerSpeedOptions.find((option) => option.value === composerSpeedValue)?.label || "Speed";
+  const composerPlaceholderText = composerPlaceholder(composerTargetIsBoth, selectedRunnerForComposer, lang);
   const composerSlashBlocked = composerTargetIsBoth && consoleInput.trim().startsWith("/");
   const composerCanSend = composerTargetReady && !composerSlashBlocked;
   const selectedConsoleOutput =
@@ -4701,10 +4678,11 @@ export function App() {
             const livePane = runnerPaneOutputs[runner.id];
             const paneOutput = runnerConsoleOutput || livePane?.output || "";
             const statusOutput = paneOutput || runner.lastOutput || "";
-            const statusMetrics = runnerStatusMetrics(statusOutput, lang);
             const paneHints = runnerOutputHints(paneOutput, lang);
             const remote = runnerRemoteStatus(runner, configRunner, statusOutput, lang);
             const needsLogin = runnerNeedsLogin(statusOutput);
+            const paneText = paneOutput || (runner.state === "running" ? ui.console.empty : row ? `${row.lastAction || "idle"} · ${formatTime(row.lastAt)}` : ui.trust.noActivity);
+            const openLabel = runnerOpenLabel(runner, lang);
             return (
               <article
                 className={cx("focus-agent-pane", isSelected && "selected")}
@@ -4734,23 +4712,6 @@ export function App() {
                     <RunnerDot state={runner.state} />
                   </div>
                 </div>
-                <button
-                  type="button"
-                  className="agent-usage-strip"
-                  disabled={!!busyRunner || runner.state !== "running"}
-                  title={lang === "zh-TW" ? "點一下送 /status 並刷新這 4 個狀態。" : "Click to send /status and refresh these 4 metrics."}
-                  onClick={(event) => {
-                    event.stopPropagation();
-                    void refreshRunnerStatus(runner);
-                  }}
-                >
-                  {statusMetrics.map((metric) => (
-                    <span key={`${runner.id}-${metric.label}`}>
-                      <small>{metric.label}</small>
-                      <strong>{metric.value}</strong>
-                    </span>
-                  ))}
-                </button>
                 {needsLogin && (
                   <div className="focus-login-guide">
                     <div>
@@ -4767,7 +4728,7 @@ export function App() {
                   </div>
                 )}
                 <div className="focus-agent-output" data-runner-output={runner.id}>
-                  {paneOutput || (runner.state === "running" ? ui.console.empty : row ? `${row.lastAction || "idle"} · ${formatTime(row.lastAt)}` : ui.trust.noActivity)}
+                  <TerminalOutput text={paneText} runner={runner} />
                 </div>
                 {paneHints.length > 0 && (
                   <div className="focus-agent-alerts">
@@ -4778,37 +4739,27 @@ export function App() {
                 )}
                 <div className="focus-agent-actions">
                   <button
-                    className="main-action"
-                    aria-label={`${ui.console.start} ${runner.session}`}
-                    title={`${ui.console.start} ${runner.session}`}
-                    disabled={!!busyRunner || runner.state === "running"}
-                    onClick={() => void runRunner(runner, "start", { onSuccess: () => setCommandRunnerId(runner.id) })}
-                  >
-                    <Play size={13} />
-                    {ui.console.start}
-                  </button>
-                  <button
                     className="main-action enter-action"
-                    aria-label={`${ui.console.open} ${runner.session}`}
-                    title={`${ui.console.open} ${runner.session}`}
+                    aria-label={`${openLabel} ${runner.session}`}
+                    title={`${openLabel} ${runner.session}`}
                     disabled={!!busyRunner}
-                    onClick={() => void runRunner(runner, "open")}
+                    onClick={() => void runRunner(runner, "open", { onSuccess: () => setCommandRunnerId(runner.id) })}
                   >
                     <Terminal size={13} />
-                    {ui.console.open}
+                    {openLabel}
                   </button>
                   <button
                     aria-label={`${ui.console.stop} ${runner.session}`}
                     title={`${ui.console.stop} ${runner.session}`}
                     className="main-action danger-action"
-                    disabled={!!busyRunner}
+                    disabled={!!busyRunner || runner.state !== "running"}
                     onClick={() => void runRunner(runner, "stop")}
                   >
                     <Square size={13} />
                     {ui.console.stop}
                   </button>
                   <button
-                    className="secondary-action screenshot-action"
+                    className="main-action screenshot-action"
                     aria-label={`${ui.console.snapshot} ${runner.session}`}
                     title={`${ui.console.snapshot} ${runner.session}`}
                     disabled={!!busyRunner}
@@ -4939,7 +4890,7 @@ export function App() {
                   void sendConsoleInput();
                 }
               }}
-              placeholder={ui.console.placeholder}
+              placeholder={composerPlaceholderText}
             />
           </div>
           <div className="composer-controls" aria-label="Agent settings">
