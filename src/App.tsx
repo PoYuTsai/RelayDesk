@@ -17,6 +17,8 @@ import {
   Image,
   Inbox,
   ListChecks,
+  Pencil,
+  Pin,
   Play,
   Plus,
   Power,
@@ -332,12 +334,14 @@ type RelaySession = {
   projectId: string;
   title: string;
   status: "active" | "archived" | "deleted";
+  pinned?: boolean;
   createdAt: string;
   updatedAt: string;
   state: RelaySessionState;
 };
 
 type SlashRisk = "safe" | "context" | "destructive" | "custom";
+type TmuxKey = "Up" | "Down" | "Left" | "Right" | "Enter" | "Escape" | "Tab";
 
 type SlashCommandPreset = {
   id: string;
@@ -353,6 +357,11 @@ const steps = ["Discuss", "Synthesize", "Build", "Review", "Verify"];
 
 const slashCommandPresets: SlashCommandPreset[] = [
   { id: "help", label: "/help", command: "/help", hint: "Show commands available in the selected CLI", risk: "safe", captureDelayMs: 650 },
+  { id: "login", label: "/login", command: "/login", hint: "Sign in or reconnect the local agent account", risk: "safe", captureDelayMs: 900 },
+  { id: "doctor", label: "/doctor", command: "/doctor", hint: "Run the agent's built-in environment checks", risk: "safe", captureDelayMs: 900 },
+  { id: "model", label: "/model", command: "/model", hint: "Open the model selector where supported", risk: "safe", captureDelayMs: 650 },
+  { id: "mcp", label: "/mcp", command: "/mcp", hint: "Inspect MCP server status where supported", risk: "safe", captureDelayMs: 900 },
+  { id: "permissions", label: "/permissions", command: "/permissions", hint: "Review or change agent write permissions", risk: "safe", captureDelayMs: 900 },
   { id: "status", label: "/status", command: "/status", hint: "Read active CLI status and usage where supported", risk: "safe", captureDelayMs: 650 },
   { id: "compact", label: "/compact", command: "/compact", hint: "Summarize or rotate long context where supported", risk: "context", captureDelayMs: 1100 },
   { id: "resume", label: "/resume", command: "/resume", hint: "Resume a previous agent session where supported", risk: "context", captureDelayMs: 1100 },
@@ -1485,12 +1494,12 @@ function runnerOutputHints(output: string, lang: Lang) {
   return [
     /Remote Control failed[\s\S]*\/login/i.test(text)
       ? zh
-        ? "Claude RC 需要 /login"
+        ? "Claude Remote 需要登入"
         : "Claude RC needs /login"
       : "",
     /Auto-update failed[\s\S]*npm prefix/i.test(text)
       ? zh
-        ? "npm prefix 權限"
+        ? "npm prefix 權限不足"
         : "npm prefix permission"
       : "",
     /\bMCP server failed\b/i.test(text)
@@ -1506,6 +1515,32 @@ function runnerOutputHints(output: string, lang: Lang) {
   ].filter(Boolean);
 }
 
+function runnerNeedsLogin(output: string) {
+  return /Remote Control failed[\s\S]*\/login/i.test(output || "") || /Select login method:/i.test(output || "");
+}
+
+function runnerLoginCopy(lang: Lang) {
+  return lang === "zh-TW"
+    ? {
+        title: "需要完成 Claude Code 登入",
+        detail: "這是 Claude Code 自己的登入選單。一般訂閱用戶選 1 走瀏覽器授權；只有 API billing 才選 Console。成功後 Claude Desktop 左側才會出現 Remote 專案。",
+        login: "送出 /login",
+        up: "上",
+        down: "下",
+        enter: "Enter",
+        esc: "Esc"
+      }
+    : {
+        title: "Claude Code sign-in required",
+        detail: "This is Claude Code's own login menu. Most subscribers choose 1 and finish browser auth; Console/API billing is a separate path. Claude Desktop will show the Remote project after it connects.",
+        login: "Send /login",
+        up: "Up",
+        down: "Down",
+        enter: "Enter",
+        esc: "Esc"
+      };
+}
+
 function runnerRemoteStatus(runner: Runner, configRunner: ConfigRunner | undefined, output: string, lang: Lang) {
   const configText = JSON.stringify(configRunner?.tmux || {});
   const wantsRemote = /--remote-control\b/i.test(configText) || /Remote Control/i.test(output || "");
@@ -1514,7 +1549,7 @@ function runnerRemoteStatus(runner: Runner, configRunner: ConfigRunner | undefin
   if (/Remote Control failed[\s\S]*\/login/i.test(output || "")) {
     return {
       status: "fail" as const,
-      label: zh ? "Remote /login" : "Remote /login"
+      label: zh ? "Remote 未啟動" : "Remote needs login"
     };
   }
   if (/Remote Control failed/i.test(output || "")) {
@@ -1725,10 +1760,12 @@ export function App() {
   const [writerRunnerId, setWriterRunnerId] = useState("");
   const [slashCommand, setSlashCommand] = useState("/help");
   const [consoleInput, setConsoleInput] = useState("");
+  const [slashMenuIndex, setSlashMenuIndex] = useState(0);
   const [consoleOutput, setConsoleOutput] = useState("");
   const [consoleOutputRunnerId, setConsoleOutputRunnerId] = useState("");
   const [consoleAutoRefresh, setConsoleAutoRefresh] = useState(false);
   const [consoleLastCaptureAt, setConsoleLastCaptureAt] = useState("");
+  const [inspectorOpen, setInspectorOpen] = useState(false);
   const [runnerPaneOutputs, setRunnerPaneOutputs] = useState<Record<string, RunnerPaneOutput>>({});
   const [newProjectName, setNewProjectName] = useState("");
   const [newProjectPath, setNewProjectPath] = useState("");
@@ -1796,6 +1833,18 @@ export function App() {
   const consoleSlashMeta = useMemo(() => {
     return consoleInput.trim().startsWith("/") ? slashCommandMeta(consoleInput) : null;
   }, [consoleInput]);
+
+  const slashCandidates = useMemo(() => {
+    const query = consoleInput.trim().toLowerCase();
+    if (!query.startsWith("/")) return [];
+    return slashCommandPresets.filter((preset) => {
+      return preset.command.toLowerCase().startsWith(query) || preset.aliases?.some((alias) => alias.startsWith(query));
+    });
+  }, [consoleInput]);
+
+  useEffect(() => {
+    setSlashMenuIndex(0);
+  }, [consoleInput, commandRunner?.id]);
 
   const writerRunner = useMemo(() => {
     return runners.find((runner) => runner.id === writerRunnerId) || runners.find((runner) => runner.id === "claude-code") || runners[0];
@@ -2199,7 +2248,7 @@ export function App() {
   function mergeSession(nextSession: RelaySession) {
     setSessions((current) =>
       [nextSession, ...current.filter((session) => session.id !== nextSession.id)].sort((a, b) =>
-        String(b.updatedAt || b.createdAt).localeCompare(String(a.updatedAt || a.createdAt))
+        Number(Boolean(b.pinned)) - Number(Boolean(a.pinned)) || String(b.updatedAt || b.createdAt).localeCompare(String(a.updatedAt || a.createdAt))
       )
     );
   }
@@ -2272,16 +2321,17 @@ export function App() {
     setSessionHydrated(true);
   }
 
-  async function archiveSession() {
-    if (!activeProject || !activeSession) return;
-    const ok = window.confirm(`Archive "${activeSession.title}"?`);
+  async function archiveSession(session = activeSession) {
+    if (!activeProject || !session) return;
+    const ok = window.confirm(`Archive "${session.title}"?`);
     if (!ok) return;
-    await saveActiveSession({ silent: true });
+    if (session.id === activeSessionId) await saveActiveSession({ silent: true });
     setSessionBusy("archive");
     try {
-      const archived = await postSessionAction({ action: "archive", sessionId: activeSession.id });
+      const archived = await postSessionAction({ action: "archive", sessionId: session.id });
       mergeSession(archived);
-      const nextSession = sessions.find((session) => session.id !== activeSession.id && session.status === "active");
+      if (session.id !== activeSessionId) return;
+      const nextSession = sessions.find((item) => item.id !== session.id && item.status === "active");
       if (nextSession) {
         setActiveSessionId(nextSession.id);
         applySessionState(nextSession);
@@ -2294,7 +2344,7 @@ export function App() {
         setSessions((current) => [
           replacement,
           archived,
-          ...current.filter((session) => session.id !== activeSession.id && session.id !== archived.id && session.id !== replacement.id)
+          ...current.filter((item) => item.id !== session.id && item.id !== archived.id && item.id !== replacement.id)
         ]);
         setActiveSessionId(replacement.id);
         applySessionState(replacement);
@@ -2307,16 +2357,17 @@ export function App() {
     }
   }
 
-  async function deleteSession() {
-    if (!activeProject || !activeSession) return;
-    const ok = window.confirm(`Delete "${activeSession.title}" from RelayDesk sessions? This will not delete project files or evidence files.`);
+  async function deleteSession(session = activeSession) {
+    if (!activeProject || !session) return;
+    const ok = window.confirm(`Delete "${session.title}" from RelayDesk sessions? This will not delete project files or evidence files.`);
     if (!ok) return;
     setSessionBusy("delete");
     try {
-      await postSessionAction({ action: "delete", sessionId: activeSession.id });
-      const remaining = sessions.filter((session) => session.id !== activeSession.id);
+      await postSessionAction({ action: "delete", sessionId: session.id });
+      const remaining = sessions.filter((item) => item.id !== session.id);
       setSessions(remaining);
-      const nextSession = remaining.find((session) => session.status === "active") || remaining[0];
+      if (session.id !== activeSessionId) return;
+      const nextSession = remaining.find((item) => item.status === "active") || remaining[0];
       if (nextSession) {
         setActiveSessionId(nextSession.id);
         applySessionState(nextSession);
@@ -2333,6 +2384,46 @@ export function App() {
       }
     } catch (error) {
       setLastRunnerOutput(`Session delete failed: ${String(error)}`);
+    } finally {
+      setSessionBusy("");
+    }
+  }
+
+  async function renameSession(session = activeSession) {
+    if (!activeProject || !session) return;
+    const title = window.prompt("Rename thread", session.title)?.trim();
+    if (!title || title === session.title) return;
+    await saveActiveSession({ silent: true });
+    setSessionBusy("rename");
+    try {
+      const renamed = await postSessionAction({
+        action: "update",
+        sessionId: session.id,
+        title,
+        status: session.status,
+        pinned: Boolean(session.pinned),
+        state: session.id === activeSessionId ? currentSessionState() : session.state
+      });
+      mergeSession(renamed);
+      if (session.id === activeSessionId) setActiveSessionId(renamed.id);
+    } catch (error) {
+      setLastRunnerOutput(`Session rename failed: ${String(error)}`);
+    } finally {
+      setSessionBusy("");
+    }
+  }
+
+  async function togglePinSession(session: RelaySession) {
+    if (!activeProject || !session) return;
+    setSessionBusy("pin");
+    try {
+      const pinned = await postSessionAction({
+        action: session.pinned ? "unpin" : "pin",
+        sessionId: session.id
+      });
+      mergeSession(pinned);
+    } catch (error) {
+      setLastRunnerOutput(`Session pin failed: ${String(error)}`);
     } finally {
       setSessionBusy("");
     }
@@ -2386,6 +2477,19 @@ export function App() {
     if (activeProjectIdRef.current !== project.id) return;
     setGit(nextGit);
     setRunners(nextRunners.runners);
+    setRunnerPaneOutputs((current) => {
+      const next = { ...current };
+      for (const runner of nextRunners.runners) {
+        if (runner.state !== "running" && next[runner.id]) {
+          next[runner.id] = {
+            output: runner.lastOutput || `${runner.session} stopped.`,
+            at: new Date().toISOString(),
+            status: runner.code && runner.code !== 0 ? "error" : "live"
+          };
+        }
+      }
+      return next;
+    });
     setDoctor(nextDoctor);
     setProjectOnboarding(nextOnboarding);
     setUsage(nextUsage);
@@ -2567,7 +2671,7 @@ export function App() {
 
   async function postRunnerAction(
     runner: Runner,
-    action: "peek" | "capture" | "send",
+    action: "peek" | "capture" | "send" | "key",
     body: Record<string, unknown> = {}
   ) {
     if (!activeProject) throw new Error("No active project.");
@@ -2589,6 +2693,68 @@ export function App() {
       throw new Error(result.error || output || `${action} failed.`);
     }
     return { ...result, output };
+  }
+
+  async function sendRunnerKey(key: TmuxKey, runner = commandRunner) {
+    if (!runner) {
+      const message = "No runner is configured for this project.";
+      replaceConsoleOutput("", message);
+      setLastRunnerOutput(message);
+      return;
+    }
+    if (runner.state !== "running") {
+      const message = `${runner.session} is not running. Start it before sending keyboard controls.`;
+      replaceConsoleOutput(runner.id, message, "error");
+      setLastRunnerOutput(message);
+      return;
+    }
+    setBusyRunner(`${runner.id}:key-${key}`);
+    try {
+      await postRunnerAction(runner, "key", { key });
+      await new Promise<void>((resolve) => window.setTimeout(resolve, 220));
+      await captureConsole(runner, { mode: "peek", silent: true });
+      await refresh(activeProject);
+    } catch (error) {
+      const message = `Keyboard control failed: ${String(error)}`;
+      replaceConsoleOutput(runner.id, message, "error");
+      setLastRunnerOutput(message);
+    } finally {
+      setBusyRunner(null);
+    }
+  }
+
+  async function sendTextToRunner(runner: Runner, text: string) {
+    const value = text.trim();
+    if (!value) return;
+    if (runner.state !== "running") {
+      const message = `${runner.session} is not running. Start it before sending input.`;
+      replaceConsoleOutput(runner.id, message, "error");
+      setLastRunnerOutput(message);
+      return;
+    }
+    setBusyRunner(`${runner.id}:direct-send`);
+    try {
+      await postRunnerAction(runner, "send", { text: value });
+      setCommandRunnerId(runner.id);
+      appendBusEvent({
+        kind: "message",
+        status: "sent",
+        title: `Sent to ${runner.session}`,
+        summary: value,
+        targetRunnerId: runner.id,
+        targetName: runner.session
+      });
+      appendConsoleOutput(runner.id, `[RelayDesk sent to ${runner.session}]\n${value}`);
+      await new Promise<void>((resolve) => window.setTimeout(resolve, 700));
+      await captureConsole(runner, { mode: "peek", silent: true });
+      await refresh(activeProject);
+    } catch (error) {
+      const message = `Send failed: ${String(error)}`;
+      replaceConsoleOutput(runner.id, message, "error");
+      setLastRunnerOutput(message);
+    } finally {
+      setBusyRunner(null);
+    }
   }
 
   async function captureConsole(
@@ -3506,9 +3672,11 @@ export function App() {
         preview: "Default sessions",
         local: "Writes to relay.local.json"
       };
+  const loginCopy = runnerLoginCopy(lang);
+  const showSlashMenu = slashCandidates.length > 0 && consoleInput.trim().startsWith("/");
 
   return (
-    <main className="focus-shell">
+    <main className={cx("focus-shell", !inspectorOpen && "inspector-collapsed")}>
       <aside className="focus-sidebar">
         <div className="brand focus-brand">
           <div className="brand-mark">
@@ -3540,24 +3708,41 @@ export function App() {
         </section>
 
         <section className="focus-side-block focus-session-list">
-          <div className="section-label">{ui.session.label}</div>
-          <select
-            value={activeSessionId}
-            disabled={!visibleSessions.length || !!sessionBusy}
-            onChange={(event) => void selectSession(event.target.value)}
-          >
-            {!visibleSessions.length && <option value="">{ui.session.noSaved}</option>}
+          <div className="side-head">
+            <div className="section-label">{ui.session.label}</div>
+            <button disabled={!!sessionBusy} onClick={() => void createSession()} title={ui.session.new}>
+              <Plus size={14} />
+            </button>
+          </div>
+          <div className="thread-list" aria-label={ui.session.label}>
             {visibleSessions.map((session) => (
-              <option value={session.id} key={`focus-session-${session.id}`}>
-                {session.status === "archived" ? `[${ui.session.archived}] ` : ""}
-                {session.title}
-              </option>
+              <div className={cx("thread-row", session.id === activeSessionId && "active", session.status === "archived" && "archived")} key={`focus-session-${session.id}`}>
+                <button className="thread-main" disabled={!!sessionBusy} onClick={() => void selectSession(session.id)}>
+                  <span>{session.pinned && <Pin size={12} />}{session.title}</span>
+                  <small>{session.status === "archived" ? ui.session.archived : formatTime(session.updatedAt)}</small>
+                </button>
+                <div className="thread-actions">
+                  <button disabled={!!sessionBusy} onClick={() => void togglePinSession(session)} title={session.pinned ? "Unpin" : "Pin"}>
+                    <Pin size={12} />
+                  </button>
+                  <button disabled={!!sessionBusy} onClick={() => void renameSession(session)} title="Rename">
+                    <Pencil size={12} />
+                  </button>
+                  <button disabled={!!sessionBusy || session.status === "archived"} onClick={() => void archiveSession(session)} title="Archive">
+                    <Archive size={12} />
+                  </button>
+                  <button disabled={!!sessionBusy} onClick={() => void deleteSession(session)} title="Delete">
+                    <Trash2 size={12} />
+                  </button>
+                </div>
+              </div>
             ))}
-          </select>
+            {!visibleSessions.length && <div className="empty-note">{ui.session.noSaved}</div>}
+          </div>
           <div className="focus-session-actions">
-            <button disabled={!!sessionBusy} onClick={() => void createSession()}>
-              <Plus size={13} />
-              {ui.session.new}
+            <button disabled={!!sessionBusy} onClick={() => setShowArchivedSessions((current) => !current)}>
+              <Archive size={13} />
+              {showArchivedSessions ? (lang === "zh-TW" ? "隱藏封存" : "Hide archived") : (lang === "zh-TW" ? "顯示封存" : "Show archived")}
             </button>
             <button disabled={!!sessionBusy} onClick={() => void copySessionBrief()}>
               <Copy size={13} />
@@ -3621,6 +3806,10 @@ export function App() {
                 繁中
               </button>
             </div>
+            <button className={cx("status-pill", "tool-toggle", inspectorOpen && "active")} onClick={() => setInspectorOpen((current) => !current)}>
+              <Settings2 size={13} />
+              {lang === "zh-TW" ? "工具" : "Tools"}
+            </button>
           </div>
         </header>
 
@@ -3687,6 +3876,7 @@ export function App() {
             const paneOutput = runnerConsoleOutput || livePane?.output || "";
             const paneHints = runnerOutputHints(paneOutput, lang);
             const remote = runnerRemoteStatus(runner, configRunner, paneOutput || runner.lastOutput || "", lang);
+            const needsLogin = runnerNeedsLogin(paneOutput || runner.lastOutput || "");
             return (
               <article className={cx("focus-agent-pane", isSelected && "selected", isWriter && "writer")} key={`focus-agent-${runner.id}`}>
                 <div className="focus-agent-head">
@@ -3701,6 +3891,21 @@ export function App() {
                     <RunnerDot state={runner.state} />
                   </div>
                 </div>
+                {needsLogin && (
+                  <div className="focus-login-guide">
+                    <div>
+                      <strong>{loginCopy.title}</strong>
+                      <span>{loginCopy.detail}</span>
+                    </div>
+                    <div className="login-guide-actions">
+                      <button disabled={!!busyRunner || runner.state !== "running"} onClick={() => void sendTextToRunner(runner, "/login")}>{loginCopy.login}</button>
+                      <button disabled={!!busyRunner || runner.state !== "running"} onClick={() => void sendRunnerKey("Up", runner)}>↑ {loginCopy.up}</button>
+                      <button disabled={!!busyRunner || runner.state !== "running"} onClick={() => void sendRunnerKey("Down", runner)}>↓ {loginCopy.down}</button>
+                      <button disabled={!!busyRunner || runner.state !== "running"} onClick={() => void sendRunnerKey("Enter", runner)}>{loginCopy.enter}</button>
+                      <button disabled={!!busyRunner || runner.state !== "running"} onClick={() => void sendRunnerKey("Escape", runner)}>{loginCopy.esc}</button>
+                    </div>
+                  </div>
+                )}
                 <div className="focus-agent-output">
                   {paneOutput || (runner.state === "running" ? ui.console.empty : row ? `${row.lastAction || "idle"} · ${formatTime(row.lastAt)}` : ui.trust.noActivity)}
                 </div>
@@ -3736,7 +3941,7 @@ export function App() {
                     aria-label={`Kill ${runner.session}`}
                     title={`Kill ${runner.session}`}
                     className="main-action danger-action"
-                    disabled={!!busyRunner || runner.state !== "running"}
+                    disabled={!!busyRunner}
                     onClick={() => void runRunner(runner, "stop")}
                   >
                     <Square size={13} />
@@ -3780,17 +3985,71 @@ export function App() {
               </option>
             ))}
           </select>
-          <input
-            value={consoleInput}
-            onChange={(event) => setConsoleInput(event.target.value)}
-            onKeyDown={(event) => {
-              if (event.key === "Enter") {
-                event.preventDefault();
-                void sendConsoleInput();
-              }
-            }}
-            placeholder={ui.console.placeholder}
-          />
+          <div className="composer-input-wrap">
+            {showSlashMenu && (
+              <div className="slash-suggest-menu">
+                {slashCandidates.map((preset, index) => (
+                  <button
+                    className={cx(index === slashMenuIndex && "active")}
+                    key={`slash-suggest-${preset.id}`}
+                    onMouseDown={(event) => {
+                      event.preventDefault();
+                      setConsoleInput(preset.command);
+                    }}
+                  >
+                    <strong>{preset.label}</strong>
+                    <span>{preset.hint}</span>
+                  </button>
+                ))}
+              </div>
+            )}
+            <textarea
+              rows={1}
+              value={consoleInput}
+              onChange={(event) => setConsoleInput(event.target.value)}
+              onKeyDown={(event) => {
+                if (showSlashMenu && (event.key === "ArrowDown" || event.key === "ArrowUp")) {
+                  event.preventDefault();
+                  setSlashMenuIndex((current) => {
+                    const delta = event.key === "ArrowDown" ? 1 : -1;
+                    return (current + delta + slashCandidates.length) % slashCandidates.length;
+                  });
+                  return;
+                }
+                if (showSlashMenu && event.key === "Tab") {
+                  event.preventDefault();
+                  setConsoleInput(slashCandidates[slashMenuIndex]?.command || consoleInput);
+                  return;
+                }
+                if (showSlashMenu && event.key === "Enter" && !event.shiftKey) {
+                  event.preventDefault();
+                  const selected = slashCandidates[slashMenuIndex];
+                  const commandName = consoleInput.trim().split(/\s+/)[0];
+                  if (selected && commandName !== selected.command) {
+                    setConsoleInput(selected.command);
+                    return;
+                  }
+                  void sendConsoleInput();
+                  return;
+                }
+                if (!consoleInput.trim() && selectedRunnerForComposer && ["ArrowUp", "ArrowDown", "Enter", "Escape"].includes(event.key)) {
+                  event.preventDefault();
+                  const keyMap: Record<string, TmuxKey> = { ArrowUp: "Up", ArrowDown: "Down", Enter: "Enter", Escape: "Escape" };
+                  void sendRunnerKey(keyMap[event.key], selectedRunnerForComposer);
+                  return;
+                }
+                if (event.key === "Enter" && !event.shiftKey) {
+                  event.preventDefault();
+                  void sendConsoleInput();
+                }
+              }}
+              placeholder={ui.console.placeholder}
+            />
+          </div>
+          <div className="composer-controls" aria-label="Agent settings">
+            <button type="button">{selectedRunnerForComposer?.id === "codex-cli" ? "GPT-5.5" : "Opus 4.8"}</button>
+            <button type="button">{lang === "zh-TW" ? "完整存取" : "Full access"}</button>
+          </div>
           <button disabled={!!busyRunner || selectedRunnerForComposer?.state !== "running" || !consoleInput.trim()} onClick={() => void sendConsoleInput()}>
             <Send size={13} />
             {ui.console.send}

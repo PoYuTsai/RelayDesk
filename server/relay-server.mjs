@@ -618,6 +618,7 @@ function publicSession(session) {
     projectId: session.projectId,
     title: session.title,
     status: session.status || "active",
+    pinned: Boolean(session.pinned),
     createdAt: session.createdAt,
     updatedAt: session.updatedAt,
     state: emptySessionState(session.state || {})
@@ -635,7 +636,7 @@ async function listSessions(project) {
   const sessions = store.sessions
     .filter((session) => session.projectId === project.id)
     .map(publicSession)
-    .sort((a, b) => String(b.updatedAt || b.createdAt).localeCompare(String(a.updatedAt || a.createdAt)));
+    .sort((a, b) => Number(b.pinned) - Number(a.pinned) || String(b.updatedAt || b.createdAt).localeCompare(String(a.updatedAt || a.createdAt)));
   return { projectId: project.id, sessions };
 }
 
@@ -651,6 +652,7 @@ async function editSession(project, body) {
       projectId: project.id,
       title: sessionTitle(body, project),
       status: "active",
+      pinned: Boolean(body.pinned),
       createdAt: now,
       updatedAt: now,
       state: emptySessionState(body.state || {})
@@ -666,8 +668,16 @@ async function editSession(project, body) {
   if (action === "update") {
     session.title = sessionTitle({ title: body.title || session.title, state: body.state || session.state }, project);
     session.status = body.status === "archived" ? "archived" : "active";
+    if (typeof body.pinned === "boolean") session.pinned = body.pinned;
     session.updatedAt = now;
     session.state = emptySessionState(body.state || session.state || {});
+    await writeSessionsStore(store);
+    return publicSession(session);
+  }
+
+  if (action === "pin" || action === "unpin") {
+    session.pinned = action === "pin";
+    session.updatedAt = now;
     await writeSessionsStore(store);
     return publicSession(session);
   }
@@ -790,7 +800,7 @@ function countUsage(project, runner, action, result, extra = {}) {
     } else if (action === "restart") {
       usage.totals.restarts += 1;
       row.restarts += 1;
-    } else if (action === "send") {
+    } else if (action === "send" || action === "key") {
       usage.totals.sends += 1;
       row.sends += 1;
     } else if (action === "capture") {
@@ -1623,6 +1633,28 @@ async function sendTmuxRunner(project, runner, text) {
   };
 }
 
+const tmuxKeyMap = new Map([
+  ["up", "Up"],
+  ["arrowup", "Up"],
+  ["down", "Down"],
+  ["arrowdown", "Down"],
+  ["left", "Left"],
+  ["arrowleft", "Left"],
+  ["right", "Right"],
+  ["arrowright", "Right"],
+  ["enter", "Enter"],
+  ["return", "Enter"],
+  ["escape", "Escape"],
+  ["esc", "Escape"],
+  ["tab", "Tab"]
+]);
+
+async function sendTmuxKeyRunner(project, runner, key) {
+  const normalized = tmuxKeyMap.get(String(key || "").trim().toLowerCase());
+  if (!normalized) return { ok: false, code: -1, stdout: "", stderr: `Unsupported tmux key: ${key || ""}` };
+  return runTmux(project, runner, ["send-keys", "-t", runner.session, normalized], 10000);
+}
+
 async function dismissStartupPrompts(project, runner) {
   if (!runner.tmux?.dismissCodexUpdatePrompt) return;
   await sleep(2500);
@@ -1666,6 +1698,7 @@ async function runRunnerAction(project, runner, action, body = {}) {
     if (action === "peek") return captureTmuxRunner(project, runner);
     if (action === "capture") return captureTmuxRunner(project, runner);
     if (action === "send") return sendTmuxRunner(project, runner, body.text);
+    if (action === "key") return sendTmuxKeyRunner(project, runner, body.key);
     if (action === "open") return openTmuxTerminal(project, runner);
   }
 
@@ -1825,7 +1858,7 @@ async function route(req, res) {
     const runner = findRunner(project, body.runnerId);
     if (!runner) return notFound(res);
     const action = body.action;
-    if (!["start", "stop", "restart", "status", "peek", "capture", "send", "open"].includes(action)) {
+    if (!["start", "stop", "restart", "status", "peek", "capture", "send", "key", "open"].includes(action)) {
       json(res, 400, { error: "Unsupported runner action." });
       return;
     }
