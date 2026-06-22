@@ -30,6 +30,7 @@ import {
   Upload,
   Workflow
 } from "lucide-react";
+import agentPresets from "../agent-presets.json";
 
 type Project = {
   id: string;
@@ -911,7 +912,7 @@ function runnerDefaults(project: Project | undefined, type: string, mode: Runner
   const codexBinary = codexBinaryPath ? (mode === "wsl" ? toWslPathClient(codexBinaryPath) : codexBinaryPath) : "codex";
   const codexProjectPath = codexBinaryPath && mode === "wsl" ? windowsForwardPath(projectPath) : target;
   const codexCommand = `${doubleQuote(codexBinary)} --no-alt-screen --dangerously-bypass-approvals-and-sandbox -C ${doubleQuote(codexProjectPath || target)}`;
-  const claudeCommand = "claude --model opus --effort xhigh";
+  const claudeCommand = agentPresets.claude.ultraCode.command;
   if (type === "claude-code") {
     return {
       id: "claude-code",
@@ -1259,9 +1260,12 @@ export function App() {
       },
       {
         id: "claude-mode",
-        label: "Claude Opus 4.8 / Ultra Code",
+        label: agentPresets.claude.ultraCode.label,
         status: doctorById.get("claude-ultra-code")?.status || doctorById.get("claude-opus-48")?.status || "warn",
-        value: doctorById.get("claude-ultra-code")?.status === "ok" ? "opus + xhigh" : checkLabel(doctorById.get("claude-ultra-code")),
+        value:
+          doctorById.get("claude-ultra-code")?.status === "ok"
+            ? `${agentPresets.claude.ultraCode.model} + ${agentPresets.claude.ultraCode.effort}`
+            : checkLabel(doctorById.get("claude-ultra-code")),
         detail: doctorById.get("claude-stream-json")?.status === "ok" ? "stream-json available" : "check stream-json support"
       },
       {

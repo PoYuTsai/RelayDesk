@@ -126,6 +126,10 @@ launch. On Windows + WSL this usually means WSL `claude`, not Windows
 `claude.cmd`. The default Claude preset is `Claude Opus 4.8 / Ultra Code`,
 implemented as `claude --model opus --effort xhigh`.
 
+Agent model presets live in `agent-presets.json`. When Claude Code or Codex CLI
+ships a major model or flag change, update that file first and run
+`npm run check:presets` before release.
+
 ## Basic Workflow
 
 1. Select a project.

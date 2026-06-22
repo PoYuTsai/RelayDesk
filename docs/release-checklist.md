@@ -44,6 +44,7 @@ Review every changed file before publishing.
 ```powershell
 npm.cmd run build
 node --check server/relay-server.mjs
+npm.cmd run check:presets
 npm.cmd run check:public
 npm.cmd run check:release
 ```
@@ -64,6 +65,7 @@ Confirm Doctor reports:
 - tmux smoke check ran for the configured environment.
 - runner session names are unique.
 - every configured runner cwd exists.
+- Claude/Codex preset parity matches `agent-presets.json`.
 
 ## 5. Browser smoke
 

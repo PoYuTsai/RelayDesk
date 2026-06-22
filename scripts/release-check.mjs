@@ -9,6 +9,7 @@ const requiredFiles = [
   "LICENSE",
   "SECURITY.md",
   "CONTRIBUTING.md",
+  "agent-presets.json",
   "docker-compose.yml",
   "docs/docker.md",
   "docs/getting-started.md",
@@ -54,6 +55,7 @@ if (/@gmail\.com|@outlook\.com|sk-[A-Za-z0-9_-]{16,}|Bearer\s+[A-Za-z0-9._-]{24,
 }
 
 execFileSync("node", ["scripts/public-scan.mjs"], { stdio: "inherit" });
+execFileSync("node", ["scripts/check-agent-presets.mjs"], { stdio: "inherit" });
 
 if (process.exitCode) process.exit(process.exitCode);
 console.log("Release check passed.");

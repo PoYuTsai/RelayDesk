@@ -105,14 +105,21 @@ silently replacing your local runner setup.
 
 RelayDesk should prefer minimum supported versions over exact pins.
 
+Agent model presets are centralized in `agent-presets.json`. When Claude Code or
+Codex CLI changes model aliases, effort levels, JSON output flags, or minimum
+versions, update that preset file first. Server Doctor checks, Project Manager
+defaults, example config, and release checks should then stay aligned.
+
 When an agent CLI changes:
 
-1. Run Doctor checks.
-2. Start the runner.
-3. Capture the prompt.
-4. Send a small test message.
-5. Stop the runner.
-6. Update this compatibility file if behavior changed.
+1. Update `agent-presets.json` if model, effort, flag, or minimum-version assumptions changed.
+2. Run `npm run check:presets`.
+3. Run Doctor checks.
+4. Start the runner.
+5. Capture the prompt.
+6. Send a small test message.
+7. Stop the runner.
+8. Update this compatibility file if behavior changed.
 
 ## Known limitations
 

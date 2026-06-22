@@ -23,6 +23,20 @@ Useful environment variables:
 which Codex binary to evaluate first. If you want a tmux runner to use that same
 binary, put the explicit path in `tmux.startCommand`.
 
+## Agent presets
+
+Model, effort, minimum-version, and label defaults live in
+`agent-presets.json`. Update that file first when Claude Code or Codex CLI
+ships a major model or flag change, then run:
+
+```powershell
+npm.cmd run check:presets
+```
+
+The current defaults target `Claude Opus 4.8 / Ultra Code` for Claude Code and
+`gpt-5.5` for Codex. The Doctor panel and Project Manager runner defaults read
+from the same preset file so the UI and backend do not drift.
+
 ## Project shape
 
 ```json

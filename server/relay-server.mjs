@@ -1,6 +1,6 @@
 import { createServer } from "node:http";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
-import { existsSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { dirname, extname, join, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 import { spawn } from "node:child_process";
@@ -12,10 +12,9 @@ const dataRoot = resolve(process.env.RELAYDESK_DATA_DIR || root);
 const staticRoot = resolve(process.env.RELAYDESK_STATIC_DIR || join(root, "dist"));
 const port = Number(process.env.RELAYDESK_PORT || 8791);
 const host = process.env.RELAYDESK_HOST || "127.0.0.1";
-const minCodexGpt55Version = "0.141.0";
-const minClaudeOpus48Version = "2.1.154";
-const claudeUltraModel = "opus";
-const claudeUltraEffort = "xhigh";
+const agentPresets = loadAgentPresets();
+const claudeUltraPreset = agentPresets.claude.ultraCode;
+const codexGpt55Preset = agentPresets.codex.gpt55;
 
 const defaultConfig = {
   projects: [
@@ -27,6 +26,15 @@ const defaultConfig = {
     }
   ]
 };
+
+function loadAgentPresets() {
+  const path = join(root, "agent-presets.json");
+  try {
+    return JSON.parse(readFileSync(path, "utf8"));
+  } catch (error) {
+    throw new Error(`Unable to load ${path}: ${error.message}`);
+  }
+}
 
 async function loadConfig() {
   const local = localConfigPath();
@@ -669,7 +677,7 @@ async function readCodexUserConfig() {
       exists: true,
       model: firstTomlString(text, "model"),
       serviceTier: firstTomlString(text, "service_tier"),
-      desktopCliPath: firstTomlString(text, "CODEX_CLI_PATH")
+      desktopCliPath: firstTomlString(text, codexGpt55Preset.desktopConfigKey)
     };
   } catch {
     return { path, exists: false, model: "", serviceTier: "", desktopCliPath: "" };
@@ -740,7 +748,7 @@ async function testCodexCandidate(candidate) {
     ...candidate,
     ok: result.ok && Boolean(version),
     version,
-    supportsGpt55: Boolean(version && semverGte(version, minCodexGpt55Version)),
+    supportsGpt55: Boolean(version && semverGte(version, codexGpt55Preset.minimumVersion)),
     output,
     error: result.ok ? "" : output
   };
@@ -769,7 +777,7 @@ async function detectCodexCli() {
     candidates: tested,
     selected,
     pathDefault,
-    execJson: Boolean(help?.ok && /--json\b/.test(`${help.stdout}\n${help.stderr}`)),
+    execJson: Boolean(help?.ok && `${help.stdout}\n${help.stderr}`.includes(codexGpt55Preset.requiredExecFlag)),
     execHelp: help ? help.stdout || help.stderr : ""
   };
 }
@@ -780,7 +788,7 @@ function claudeCapability(candidate, helpText, ultraProbe) {
     ...candidate,
     supportsEffort,
     supportsStreamJson: /stream-json/.test(helpText),
-    supportsOpus48: Boolean(candidate.version && semverGte(candidate.version, minClaudeOpus48Version)),
+    supportsOpus48: Boolean(candidate.version && semverGte(candidate.version, claudeUltraPreset.minimumVersion)),
     supportsXhigh: Boolean(ultraProbe?.ok),
     supportsMax: supportsEffort
   };
@@ -793,8 +801,8 @@ async function testNativeClaudeCandidate(candidate) {
   const help = result.ok ? await runCommand([candidate.path, "--help"], root, 10000) : null;
   const helpText = `${help?.stdout || ""}\n${help?.stderr || ""}`;
   const ultraProbe =
-    result.ok && version && semverGte(version, minClaudeOpus48Version)
-      ? await runCommand([candidate.path, "--model", claudeUltraModel, "--effort", claudeUltraEffort, "--version"], root, 10000)
+    result.ok && version && semverGte(version, claudeUltraPreset.minimumVersion)
+      ? await runCommand([candidate.path, "--model", claudeUltraPreset.model, "--effort", claudeUltraPreset.effort, "--version"], root, 10000)
       : null;
   return claudeCapability(
     {
@@ -821,8 +829,8 @@ async function testWslClaudeCandidate() {
   const help = result.ok ? await runCommand(["wsl.exe", "--exec", "bash", "-lc", "claude --help"], root, 10000) : null;
   const helpText = `${help?.stdout || ""}\n${help?.stderr || ""}`;
   const ultraProbe =
-    result.ok && version && semverGte(version, minClaudeOpus48Version)
-      ? await runCommand(["wsl.exe", "--exec", "bash", "-lc", `claude --model ${claudeUltraModel} --effort ${claudeUltraEffort} --version`], root, 10000)
+    result.ok && version && semverGte(version, claudeUltraPreset.minimumVersion)
+      ? await runCommand(["wsl.exe", "--exec", "bash", "-lc", `${claudeUltraPreset.command} --version`], root, 10000)
       : null;
   return claudeCapability(
     {
@@ -863,9 +871,9 @@ async function detectClaudeCli(preferWsl = false) {
     supportsOpus48: Boolean(selected?.supportsOpus48),
     supportsXhigh: Boolean(selected?.supportsXhigh),
     supportsMax: Boolean(selected?.supportsMax),
-    preferredModel: claudeUltraModel,
-    preferredEffort: claudeUltraEffort,
-    minimumOpus48Version: minClaudeOpus48Version,
+    preferredModel: claudeUltraPreset.model,
+    preferredEffort: claudeUltraPreset.effort,
+    minimumOpus48Version: claudeUltraPreset.minimumVersion,
     help: ""
   };
 }
@@ -909,16 +917,16 @@ async function agentParityChecks(config) {
         "Claude effort flag",
         claude.supportsEffort,
         claude.supportsEffort ? "Claude Code exposes --effort for high-reasoning presets." : "Selected Claude CLI help did not expose --effort.",
-        "Upgrade Claude Code if you need Opus 4.8 Ultra Code parity.",
+        `Upgrade Claude Code if you need ${claudeUltraPreset.label} parity.`,
         "warn"
       )
     );
     checks.push(
       check(
         "claude-opus-48",
-        "Claude Opus 4.8 capable",
+        `${claudeUltraPreset.label} capable`,
         claude.supportsOpus48,
-        `${claude.selected.version || "unknown"} selected; Claude Code ${minClaudeOpus48Version}+ is required for Opus 4.8.`,
+        `${claude.selected.version || "unknown"} selected; Claude Code ${claudeUltraPreset.minimumVersion}+ is required for ${claudeUltraPreset.label}.`,
         "Upgrade the Claude Code binary used by the tmux runner.",
         "warn"
       )
@@ -926,12 +934,12 @@ async function agentParityChecks(config) {
     checks.push(
       check(
         "claude-ultra-code",
-        "Claude Opus 4.8 Ultra Code",
+        claudeUltraPreset.label,
         claude.supportsOpus48 && claude.supportsXhigh,
         claude.supportsXhigh
-          ? `Runner accepts --model ${claudeUltraModel} --effort ${claudeUltraEffort}.`
-          : `Runner did not accept --model ${claudeUltraModel} --effort ${claudeUltraEffort}. Use --effort max as fallback if this CLI only exposes low/medium/high/max.`,
-        "Use Claude Code 2.1.154+ in the same environment as tmux, then start with --model opus --effort xhigh.",
+          ? `Runner accepts --model ${claudeUltraPreset.model} --effort ${claudeUltraPreset.effort}.`
+          : `Runner did not accept --model ${claudeUltraPreset.model} --effort ${claudeUltraPreset.effort}. Use --effort ${claudeUltraPreset.fallbackEffort} as fallback if this CLI only exposes low/medium/high/max.`,
+        `Use Claude Code ${claudeUltraPreset.minimumVersion}+ in the same environment as tmux, then start with ${claudeUltraPreset.command}.`,
         "warn"
       )
     );
@@ -951,9 +959,9 @@ async function agentParityChecks(config) {
     checks.push(
       check(
         "codex-gpt-55",
-        "Codex gpt-5.5 capable",
+        `${codexGpt55Preset.label} capable`,
         codex.selected.supportsGpt55,
-        `${codex.selected.version || "unknown"} selected; known minimum for this workflow is ${minCodexGpt55Version}.`,
+        `${codex.selected.version || "unknown"} selected; known minimum for this workflow is ${codexGpt55Preset.minimumVersion}.`,
         "Upgrade Codex CLI, or use the Codex Desktop bundled binary recorded in ~/.codex/config.toml.",
         "warn"
       )
@@ -1034,9 +1042,9 @@ async function doctor(config) {
         checks.push(
           check(
             "wsl-codex-gpt-55",
-            "WSL Codex gpt-5.5 capable",
-            Boolean(version && semverGte(version, minCodexGpt55Version)),
-            version ? `${version} in WSL; known minimum for this workflow is ${minCodexGpt55Version}.` : wslCodex.detail,
+            `WSL ${codexGpt55Preset.label} capable`,
+            Boolean(version && semverGte(version, codexGpt55Preset.minimumVersion)),
+            version ? `${version} in WSL; known minimum for this workflow is ${codexGpt55Preset.minimumVersion}.` : wslCodex.detail,
             "Upgrade WSL Codex CLI or point the runner start command at a newer Codex binary.",
             "warn"
           )
