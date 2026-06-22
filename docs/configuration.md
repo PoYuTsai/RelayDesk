@@ -16,7 +16,7 @@ Useful environment variables:
 | `RELAYDESK_PORT` | `8791` | API/static server port. |
 | `RELAYDESK_DATA_DIR` | repo root | Runtime data directory. |
 | `RELAYDESK_STATIC_DIR` | `dist` | Static UI build directory served by the API server. |
-| `RELAYDESK_CLAUDE_PATH` | PATH lookup | Preferred Claude Code binary for Doctor parity checks. |
+| `RELAYDESK_CLAUDE_PATH` | PATH lookup | Preferred native Claude Code binary for Doctor parity checks. WSL/tmux runners are checked against WSL `claude`. |
 | `RELAYDESK_CODEX_PATH` | Codex Desktop config, then PATH lookup | Preferred Codex binary for Doctor parity checks. |
 
 `RELAYDESK_CODEX_PATH` does not rewrite your runner command. It tells Doctor
@@ -56,10 +56,20 @@ Fields:
   "tmux": {
     "mode": "wsl",
     "cwd": "/mnt/c/path/to/MyProject",
-    "startCommand": "bash -lc 'cd /mnt/c/path/to/MyProject && claude'"
+    "startCommand": "bash -lc 'cd /mnt/c/path/to/MyProject && claude --model opus --effort xhigh'"
   }
 }
 ```
+
+RelayDesk labels this preset as `Claude Opus 4.8 / Ultra Code`. The label is a
+RelayDesk preset; the actual Claude Code command is:
+
+```bash
+claude --model opus --effort xhigh
+```
+
+If your local Claude Code does not support `xhigh`, use `--effort max` or
+upgrade the CLI used by the tmux runner.
 
 Fields:
 

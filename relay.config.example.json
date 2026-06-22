@@ -13,7 +13,7 @@
           "tmux": {
             "mode": "wsl",
             "cwd": "/mnt/c/path/to/MyApp",
-            "startCommand": "bash -lc 'cd /mnt/c/path/to/MyApp && claude'"
+            "startCommand": "bash -lc 'cd /mnt/c/path/to/MyApp && claude --model opus --effort xhigh'"
           }
         },
         {

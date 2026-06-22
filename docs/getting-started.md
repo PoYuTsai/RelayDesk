@@ -119,9 +119,9 @@ You want:
 - `0 fail`.
 - No missing project paths.
 - Claude/Codex available if you configured those runners.
-- Agent parity checks that match your goal. In particular, confirm which Codex
-  entrypoint is selected and whether it is `gpt-5.5 capable` before expecting
-  Codex Desktop-like quality.
+- Agent parity checks that match your goal. In particular, confirm that the
+  Claude runner shows `Claude Opus 4.8 / Ultra Code` and that the selected
+  Codex entrypoint is `gpt-5.5 capable` before expecting desktop-like quality.
 - A passing tmux smoke check for the environment you use.
 - Unique tmux session names for every runner.
 - `.relaydesk/` and `relay.local.json` ignored by git.

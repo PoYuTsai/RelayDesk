@@ -13,6 +13,9 @@ const staticRoot = resolve(process.env.RELAYDESK_STATIC_DIR || join(root, "dist"
 const port = Number(process.env.RELAYDESK_PORT || 8791);
 const host = process.env.RELAYDESK_HOST || "127.0.0.1";
 const minCodexGpt55Version = "0.141.0";
+const minClaudeOpus48Version = "2.1.154";
+const claudeUltraModel = "opus";
+const claudeUltraEffort = "xhigh";
 
 const defaultConfig = {
   projects: [
@@ -579,6 +582,15 @@ function usesPlainWslCodex(config) {
   );
 }
 
+function usesWslClaude(config) {
+  return (config.projects || []).some((project) =>
+    (project.runners || []).some((runner) => {
+      if (runner.kind !== "tmux" || (runner.tmux?.mode || "wsl") !== "wsl") return false;
+      return runner.id === "claude-code" || JSON.stringify(runner).toLowerCase().includes("claude");
+    })
+  );
+}
+
 function runnerSessionUniqueness(config) {
   const seen = new Map();
   const duplicates = [];
@@ -762,34 +774,99 @@ async function detectCodexCli() {
   };
 }
 
-async function detectClaudeCli() {
-  const candidates = [];
-  addCandidate(candidates, process.env.RELAYDESK_CLAUDE_PATH, "RELAYDESK_CLAUDE_PATH");
-  for (const candidate of await whereCandidates("claude.cmd", "PATH claude.cmd")) addCandidate(candidates, candidate.path, candidate.source);
-  if (process.platform !== "win32") addCandidate(candidates, process.env.RELAYDESK_CLAUDE_PATH || "claude", "PATH claude");
+function claudeCapability(candidate, helpText, ultraProbe) {
+  const supportsEffort = /--effort\b/.test(helpText);
+  return {
+    ...candidate,
+    supportsEffort,
+    supportsStreamJson: /stream-json/.test(helpText),
+    supportsOpus48: Boolean(candidate.version && semverGte(candidate.version, minClaudeOpus48Version)),
+    supportsXhigh: Boolean(ultraProbe?.ok),
+    supportsMax: supportsEffort
+  };
+}
 
-  const tested = [];
-  for (const candidate of candidates) {
-    const result = await runCommand([candidate.path, "--version"], root, 10000);
-    const output = result.stdout || result.stderr;
-    tested.push({
+async function testNativeClaudeCandidate(candidate) {
+  const result = await runCommand([candidate.path, "--version"], root, 10000);
+  const output = result.stdout || result.stderr;
+  const version = parseClaudeVersion(output);
+  const help = result.ok ? await runCommand([candidate.path, "--help"], root, 10000) : null;
+  const helpText = `${help?.stdout || ""}\n${help?.stderr || ""}`;
+  const ultraProbe =
+    result.ok && version && semverGte(version, minClaudeOpus48Version)
+      ? await runCommand([candidate.path, "--model", claudeUltraModel, "--effort", claudeUltraEffort, "--version"], root, 10000)
+      : null;
+  return claudeCapability(
+    {
       ...candidate,
-      ok: result.ok,
-      version: parseClaudeVersion(output),
+      kind: "native",
+      ok: result.ok && Boolean(version),
+      version,
       output,
       error: result.ok ? "" : output
-    });
-  }
-  const selected = tested.find((candidate) => candidate.ok) || null;
-  const help = selected ? await runCommand([selected.path, "--help"], root, 10000) : null;
-  const helpText = `${help?.stdout || ""}\n${help?.stderr || ""}`;
+    },
+    helpText,
+    ultraProbe
+  );
+}
 
+async function testWslClaudeCandidate() {
+  const result = await runCommand(["wsl.exe", "--exec", "bash", "-lc", "command -v claude && claude --version"], root, 10000);
+  const output = result.stdout || result.stderr;
+  const lines = output
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter(Boolean);
+  const version = parseClaudeVersion(output);
+  const help = result.ok ? await runCommand(["wsl.exe", "--exec", "bash", "-lc", "claude --help"], root, 10000) : null;
+  const helpText = `${help?.stdout || ""}\n${help?.stderr || ""}`;
+  const ultraProbe =
+    result.ok && version && semverGte(version, minClaudeOpus48Version)
+      ? await runCommand(["wsl.exe", "--exec", "bash", "-lc", `claude --model ${claudeUltraModel} --effort ${claudeUltraEffort} --version`], root, 10000)
+      : null;
+  return claudeCapability(
+    {
+      path: lines[0] || "claude",
+      source: "WSL claude",
+      kind: "wsl",
+      ok: result.ok && Boolean(version),
+      version,
+      output,
+      error: result.ok ? "" : output
+    },
+    helpText,
+    ultraProbe
+  );
+}
+
+async function detectClaudeCli(preferWsl = false) {
+  const candidates = [];
+  const nativeCandidates = [];
+  addCandidate(nativeCandidates, process.env.RELAYDESK_CLAUDE_PATH, "RELAYDESK_CLAUDE_PATH");
+  for (const candidate of await whereCandidates("claude.cmd", "PATH claude.cmd")) addCandidate(nativeCandidates, candidate.path, candidate.source);
+  if (process.platform !== "win32") addCandidate(nativeCandidates, process.env.RELAYDESK_CLAUDE_PATH || "claude", "PATH claude");
+
+  if (preferWsl && process.platform === "win32") candidates.push(await testWslClaudeCandidate());
+  for (const candidate of nativeCandidates) candidates.push(await testNativeClaudeCandidate(candidate));
+  if (!preferWsl && process.platform === "win32") candidates.push(await testWslClaudeCandidate());
+
+  const selected =
+    (preferWsl ? candidates.find((candidate) => candidate.kind === "wsl" && candidate.ok) : null) ||
+    candidates.find((candidate) => candidate.ok && candidate.supportsOpus48 && candidate.supportsXhigh) ||
+    candidates.find((candidate) => candidate.ok) ||
+    null;
   return {
-    candidates: tested,
+    candidates,
     selected,
-    supportsEffort: Boolean(help?.ok && /--effort\b/.test(helpText)),
-    supportsStreamJson: Boolean(help?.ok && /stream-json/.test(helpText)),
-    help: helpText
+    supportsEffort: Boolean(selected?.supportsEffort),
+    supportsStreamJson: Boolean(selected?.supportsStreamJson),
+    supportsOpus48: Boolean(selected?.supportsOpus48),
+    supportsXhigh: Boolean(selected?.supportsXhigh),
+    supportsMax: Boolean(selected?.supportsMax),
+    preferredModel: claudeUltraModel,
+    preferredEffort: claudeUltraEffort,
+    minimumOpus48Version: minClaudeOpus48Version,
+    help: ""
   };
 }
 
@@ -800,14 +877,15 @@ function cliDetail(candidate) {
 
 async function agentParityChecks(config) {
   const checks = [];
-  const [codex, claude] = await Promise.all([detectCodexCli(), detectClaudeCli()]);
+  const prefersWslClaude = usesWslClaude(config);
+  const [codex, claude] = await Promise.all([detectCodexCli(), detectClaudeCli(prefersWslClaude)]);
   const needsCodex = hasRunnerCommand(config, "codex");
-  const needsClaude = hasRunnerCommand(config, "claude");
+  const needsClaude = hasRunnerCommand(config, "claude") || prefersWslClaude;
 
   checks.push(
     check(
       "claude-selected-cli",
-      "Claude selected CLI",
+      prefersWslClaude ? "Claude runner CLI" : "Claude selected CLI",
       Boolean(claude.selected),
       cliDetail(claude.selected),
       "Install Claude Code, login, or set RELAYDESK_CLAUDE_PATH.",
@@ -831,7 +909,29 @@ async function agentParityChecks(config) {
         "Claude effort flag",
         claude.supportsEffort,
         claude.supportsEffort ? "Claude Code exposes --effort for high-reasoning presets." : "Selected Claude CLI help did not expose --effort.",
-        "Upgrade Claude Code if you need Opus + max effort parity.",
+        "Upgrade Claude Code if you need Opus 4.8 Ultra Code parity.",
+        "warn"
+      )
+    );
+    checks.push(
+      check(
+        "claude-opus-48",
+        "Claude Opus 4.8 capable",
+        claude.supportsOpus48,
+        `${claude.selected.version || "unknown"} selected; Claude Code ${minClaudeOpus48Version}+ is required for Opus 4.8.`,
+        "Upgrade the Claude Code binary used by the tmux runner.",
+        "warn"
+      )
+    );
+    checks.push(
+      check(
+        "claude-ultra-code",
+        "Claude Opus 4.8 Ultra Code",
+        claude.supportsOpus48 && claude.supportsXhigh,
+        claude.supportsXhigh
+          ? `Runner accepts --model ${claudeUltraModel} --effort ${claudeUltraEffort}.`
+          : `Runner did not accept --model ${claudeUltraModel} --effort ${claudeUltraEffort}. Use --effort max as fallback if this CLI only exposes low/medium/high/max.`,
+        "Use Claude Code 2.1.154+ in the same environment as tmux, then start with --model opus --effort xhigh.",
         "warn"
       )
     );

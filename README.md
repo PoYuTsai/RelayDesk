@@ -121,6 +121,11 @@ Doctor also shows agent parity hints. This matters because `codex` on PATH,
 versions. Use the binary Doctor marks as `gpt-5.5 capable` when you want the
 closest Codex Desktop parity.
 
+For Claude Code runners, Doctor prefers the same environment that tmux will
+launch. On Windows + WSL this usually means WSL `claude`, not Windows
+`claude.cmd`. The default Claude preset is `Claude Opus 4.8 / Ultra Code`,
+implemented as `claude --model opus --effort xhigh`.
+
 ## Basic Workflow
 
 1. Select a project.
@@ -309,10 +314,13 @@ Recommended WSL tmux runner:
   "tmux": {
     "mode": "wsl",
     "cwd": "/mnt/c/path/to/MyApp",
-    "startCommand": "bash -lc 'cd /mnt/c/path/to/MyApp && claude'"
+    "startCommand": "bash -lc 'cd /mnt/c/path/to/MyApp && claude --model opus --effort xhigh'"
   }
 }
 ```
+
+If your Claude Code build does not accept `--effort xhigh`, use `--effort max`
+until you upgrade the CLI used by the tmux runner.
 
 Codex CLI runner with startup prompt handling:
 

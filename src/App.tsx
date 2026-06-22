@@ -100,9 +100,15 @@ type DoctorCheck = {
 type AgentCliCandidate = {
   path: string;
   source: string;
+  kind?: string;
   ok: boolean;
   version: string;
   supportsGpt55?: boolean;
+  supportsEffort?: boolean;
+  supportsStreamJson?: boolean;
+  supportsOpus48?: boolean;
+  supportsXhigh?: boolean;
+  supportsMax?: boolean;
   output?: string;
   error?: string;
 };
@@ -113,7 +119,13 @@ type AgentCliHealth = {
   candidates?: AgentCliCandidate[];
   supportsEffort?: boolean;
   supportsStreamJson?: boolean;
+  supportsOpus48?: boolean;
+  supportsXhigh?: boolean;
+  supportsMax?: boolean;
   execJson?: boolean;
+  preferredModel?: string;
+  preferredEffort?: string;
+  minimumOpus48Version?: string;
 };
 
 type DoctorContext = {
@@ -340,6 +352,8 @@ const doctorPriorityIds = [
   "claude-selected-cli",
   "claude-stream-json",
   "claude-effort-mode",
+  "claude-opus-48",
+  "claude-ultra-code",
   "codex-selected-cli",
   "codex-gpt-55",
   "codex-json-events",
@@ -897,13 +911,14 @@ function runnerDefaults(project: Project | undefined, type: string, mode: Runner
   const codexBinary = codexBinaryPath ? (mode === "wsl" ? toWslPathClient(codexBinaryPath) : codexBinaryPath) : "codex";
   const codexProjectPath = codexBinaryPath && mode === "wsl" ? windowsForwardPath(projectPath) : target;
   const codexCommand = `${doubleQuote(codexBinary)} --no-alt-screen --dangerously-bypass-approvals-and-sandbox -C ${doubleQuote(codexProjectPath || target)}`;
+  const claudeCommand = "claude --model opus --effort xhigh";
   if (type === "claude-code") {
     return {
       id: "claude-code",
       name: "Claude Code tmux",
       session: `rc-${projectId}`,
       cwd,
-      startCommand: mode === "wsl" ? withWslShell("claude") : "claude"
+      startCommand: mode === "wsl" ? withWslShell(claudeCommand) : claudeCommand
     };
   }
   if (type === "codex-cli") {
@@ -1126,7 +1141,11 @@ export function App() {
     }
     if (runnerType === "claude-code") {
       const claudeEffort = doctorById.get("claude-effort-mode");
+      const claudeOpus = doctorById.get("claude-opus-48");
+      const claudeUltra = doctorById.get("claude-ultra-code");
       if (claudeEffort?.status === "warn") warnings.push(`${claudeEffort.label}: ${claudeEffort.detail}`);
+      if (claudeOpus?.status === "warn") warnings.push(`${claudeOpus.label}: ${claudeOpus.detail}`);
+      if (claudeUltra?.status === "warn") warnings.push(`${claudeUltra.label}: ${claudeUltra.detail}`);
     }
 
     return {
@@ -1192,7 +1211,9 @@ export function App() {
   const setupRows = useMemo(() => {
     const pathChecks = (doctor?.checks || []).filter((item) => item.id.startsWith("project-"));
     const terminalChecks = ["wsl", "wsl-tmux", "wsl-tmux-smoke", "tmux", "tmux-smoke"].map((id) => doctorById.get(id)).filter(Boolean) as DoctorCheck[];
-    const agentChecks = ["wsl-claude", "wsl-codex", "wsl-codex-gpt-55", "claude-selected-cli", "codex-gpt-55"].map((id) => doctorById.get(id)).filter(Boolean) as DoctorCheck[];
+    const agentChecks = ["wsl-claude", "claude-opus-48", "claude-ultra-code", "wsl-codex", "wsl-codex-gpt-55", "claude-selected-cli", "codex-gpt-55"]
+      .map((id) => doctorById.get(id))
+      .filter(Boolean) as DoctorCheck[];
     const statusFrom = (items: DoctorCheck[]) =>
       items.some((item) => item.status === "fail") ? "fail" : items.some((item) => item.status === "warn") ? "warn" : "ok";
 
@@ -1231,16 +1252,16 @@ export function App() {
     return [
       {
         id: "claude",
-        label: "Claude Code",
+        label: "Claude runner",
         status: doctorById.get("claude-selected-cli")?.status || "warn",
         value: selectedClaude?.version ? `${selectedClaude.version} (${selectedClaude.source})` : oneLine(doctorById.get("claude-selected-cli")?.detail) || "not checked",
         detail: shortPath(selectedClaude?.path || detailPath(doctorById.get("claude-selected-cli")?.detail))
       },
       {
         id: "claude-mode",
-        label: "Opus / high effort",
-        status: doctorById.get("claude-effort-mode")?.status || "warn",
-        value: checkLabel(doctorById.get("claude-effort-mode")),
+        label: "Claude Opus 4.8 / Ultra Code",
+        status: doctorById.get("claude-ultra-code")?.status || doctorById.get("claude-opus-48")?.status || "warn",
+        value: doctorById.get("claude-ultra-code")?.status === "ok" ? "opus + xhigh" : checkLabel(doctorById.get("claude-ultra-code")),
         detail: doctorById.get("claude-stream-json")?.status === "ok" ? "stream-json available" : "check stream-json support"
       },
       {

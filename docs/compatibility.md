@@ -11,7 +11,8 @@ RelayDesk depends on local tools that can change over time. Keep compatibility e
 | Git | 2.50.0.windows.1 |
 | WSL kernel | Linux 6.6.87.2-microsoft-standard-WSL2 |
 | tmux | 3.4 |
-| Claude Code | 2.1.87 |
+| Claude Code in WSL | 2.1.183 |
+| Claude Code on Windows PATH | 2.1.87 |
 | Codex CLI in WSL | 0.132.0 |
 | Codex CLI on Windows PATH | 0.118.0 |
 | Codex Desktop bundled CLI | 0.142.0-alpha.6 |
@@ -30,8 +31,8 @@ Claude Code / Codex CLI / tmux update. It checks:
 - WSL and/or native tmux availability;
 - a real temporary tmux smoke session;
 - Claude Code and Codex CLI availability when configured;
-- Claude/Codex CLI parity hints for stream-json, high-effort flags, Codex
-  `exec --json`, and whether the selected Codex binary is new enough for the
+- Claude/Codex CLI parity hints for stream-json, Opus 4.8 Ultra Code, Codex
+  `exec --json`, and whether the selected binaries are new enough for the
   target latest-model workflow;
 - PATH shadowing, where an older `codex` on PATH differs from the newer Codex
   Desktop bundled binary;
@@ -45,6 +46,22 @@ touch your configured agent sessions.
 ### Claude Code
 
 Claude Code is treated as a tmux runner. RelayDesk can start, stop, capture, send text, and open an attached terminal.
+
+For WSL/tmux runners, Doctor treats WSL `claude` as the primary Claude Code
+binary because that is what tmux actually launches. Windows `claude.cmd` is
+still shown as a native candidate, but it should not be used to infer WSL runner
+quality.
+
+The default high-capability preset is labeled `Claude Opus 4.8 / Ultra Code`.
+It maps to:
+
+```bash
+claude --model opus --effort xhigh
+```
+
+Claude Code v2.1.154 or newer is required for Opus 4.8. If `xhigh` is not
+accepted by your installed CLI, use `--effort max` as a fallback until the
+runner's Claude Code is upgraded.
 
 Recommended:
 
