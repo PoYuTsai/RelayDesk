@@ -1547,9 +1547,22 @@ function tmuxAttachArgs(runner) {
 
 function terminalEntryArgs(runner, command) {
   const mode = runner.tmux?.mode || "wsl";
-  if (mode === "wsl") return ["wsl.exe", "--exec", "bash", "-ic", command];
-  if (process.platform === "win32") return ["cmd.exe", "/d", "/s", "/c", command];
-  return ["bash", "-lc", command];
+  if (mode === "wsl") return ["wsl.exe", "--exec", "bash", "-ic", `export TERM=xterm-256color; ${command}`];
+  if (process.platform === "win32") return ["cmd.exe", "/d", "/s", "/c", `set TERM=xterm-256color&& ${command}`];
+  return ["bash", "-lc", `export TERM=xterm-256color; ${command}`];
+}
+
+function tmuxAttachShellCommand(runner) {
+  return `export TERM=xterm-256color; exec tmux attach-session -t ${shellQuote(runner.session)}`;
+}
+
+function tmuxTerminalAttachArgs(runner) {
+  const mode = runner.tmux?.mode || "wsl";
+  if (mode === "wsl") return ["wsl.exe", "--exec", "bash", "-lc", tmuxAttachShellCommand(runner)];
+  if (process.platform === "win32") {
+    return ["cmd.exe", "/d", "/s", "/c", `set TERM=xterm-256color&& tmux attach-session -t ${windowsCommandLineQuote(runner.session)}`];
+  }
+  return ["bash", "-lc", tmuxAttachShellCommand(runner)];
 }
 
 function runnerCwd(project, runner) {
@@ -1631,7 +1644,7 @@ async function openTmuxTerminal(project, runner) {
     const started = await startTmuxRunner(project, runner);
     if (!started.ok) return started;
   }
-  const attach = tmuxAttachArgs(runner);
+  const attach = tmuxTerminalAttachArgs(runner);
   const wtResult = await spawnDetached(["wt.exe", "new-tab", "--title", title, ...attach], runnerCwd(project, runner));
   if (wtResult.ok) return wtResult;
   return spawnDetached(["cmd.exe", "/c", "start", title, ...attach], runnerCwd(project, runner));

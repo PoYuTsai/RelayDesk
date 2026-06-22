@@ -351,6 +351,27 @@ button {
   white-space: pre-wrap;
 }
 
+.focus-agent-alerts {
+  flex: 0 0 auto;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: -4px 0 10px;
+}
+
+.focus-agent-alerts span {
+  min-height: 22px;
+  display: inline-flex;
+  align-items: center;
+  padding: 0 8px;
+  color: #ffcfdd;
+  background: rgba(244, 63, 94, 0.13);
+  border: 1px solid rgba(244, 63, 94, 0.3);
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 850;
+}
+
 .focus-agent-actions {
   flex: 0 0 auto;
   display: grid;
@@ -710,6 +731,14 @@ button {
   color: var(--faint);
 }
 
+.runner-mini-meta {
+  display: inline-flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 6px;
+  min-width: 0;
+}
+
 .runner-dot {
   width: 8px;
   height: 8px;
@@ -726,6 +755,32 @@ button {
 .runner-dot.stopped {
   background: var(--warn);
   box-shadow: 0 0 0 4px rgba(244, 184, 96, 0.12);
+}
+
+.remote-badge {
+  min-height: 20px;
+  display: inline-flex;
+  align-items: center;
+  padding: 0 7px;
+  color: #d8fff6;
+  background: rgba(45, 212, 191, 0.1);
+  border: 1px solid rgba(45, 212, 191, 0.28);
+  border-radius: 999px;
+  font-size: 10px;
+  font-weight: 900;
+  white-space: nowrap;
+}
+
+.remote-badge.warn {
+  color: #ffe1af;
+  background: rgba(244, 184, 96, 0.1);
+  border-color: rgba(244, 184, 96, 0.28);
+}
+
+.remote-badge.fail {
+  color: #ffcfdd;
+  background: rgba(244, 63, 94, 0.14);
+  border-color: rgba(244, 63, 94, 0.32);
 }
 
 .risk-box {

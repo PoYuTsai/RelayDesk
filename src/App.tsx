@@ -91,6 +91,12 @@ type Runner = {
   code?: number;
 };
 
+type RunnerPaneOutput = {
+  output: string;
+  at: string;
+  status: "live" | "error";
+};
+
 type DoctorCheck = {
   id: string;
   label: string;
@@ -1473,6 +1479,62 @@ function runnerStartSummary(runner: ConfigRunner | undefined) {
   return normalized.length > 92 ? `${normalized.slice(0, 89)}...` : normalized;
 }
 
+function runnerOutputHints(output: string, lang: Lang) {
+  const text = output || "";
+  const zh = lang === "zh-TW";
+  return [
+    /Remote Control failed[\s\S]*\/login/i.test(text)
+      ? zh
+        ? "Claude RC 需要 /login"
+        : "Claude RC needs /login"
+      : "",
+    /Auto-update failed[\s\S]*npm prefix/i.test(text)
+      ? zh
+        ? "npm prefix 權限"
+        : "npm prefix permission"
+      : "",
+    /\bMCP server failed\b/i.test(text)
+      ? zh
+        ? "MCP server 失敗"
+        : "MCP server failed"
+      : "",
+    /TERM is set to ["']?dumb/i.test(text)
+      ? zh
+        ? "TERM=dumb"
+        : "TERM=dumb"
+      : ""
+  ].filter(Boolean);
+}
+
+function runnerRemoteStatus(runner: Runner, configRunner: ConfigRunner | undefined, output: string, lang: Lang) {
+  const configText = JSON.stringify(configRunner?.tmux || {});
+  const wantsRemote = /--remote-control\b/i.test(configText) || /Remote Control/i.test(output || "");
+  if (!wantsRemote) return null;
+  const zh = lang === "zh-TW";
+  if (/Remote Control failed[\s\S]*\/login/i.test(output || "")) {
+    return {
+      status: "fail" as const,
+      label: zh ? "Remote /login" : "Remote /login"
+    };
+  }
+  if (/Remote Control failed/i.test(output || "")) {
+    return {
+      status: "fail" as const,
+      label: zh ? "Remote 失敗" : "Remote failed"
+    };
+  }
+  if (runner.state === "running") {
+    return {
+      status: "ok" as const,
+      label: zh ? "Remote" : "Remote"
+    };
+  }
+  return {
+    status: "warn" as const,
+    label: zh ? "Remote 未啟動" : "Remote off"
+  };
+}
+
 function toWslPathClient(path: string) {
   const normalized = path.trim().replace(/\\/g, "/");
   const match = normalized.match(/^([A-Za-z]):\/(.*)$/);
@@ -1505,7 +1567,7 @@ function runnerDefaults(project: Project | undefined, type: string, mode: Runner
   const withWslShell = (command: string) => `bash -lc ${singleQuote(`cd ${doubleQuote(target)} && ${command}`)}`;
   const codexBinary = codexBinaryPath ? (mode === "wsl" ? toWslPathClient(codexBinaryPath) : codexBinaryPath) : "codex";
   const codexProjectPath = codexBinaryPath && mode === "wsl" ? windowsForwardPath(projectPath) : target;
-  const codexCommand = `${doubleQuote(codexBinary)} --no-alt-screen --dangerously-bypass-approvals-and-sandbox -C ${doubleQuote(codexProjectPath || target)}`;
+  const codexCommand = `${mode === "wsl" ? "export TERM=xterm-256color; " : ""}${doubleQuote(codexBinary)} --no-alt-screen --dangerously-bypass-approvals-and-sandbox -C ${doubleQuote(codexProjectPath || target)}`;
   const claudeCommand = agentPresets.claude.ultraCode.command;
   if (type === "claude-code") {
     return {
@@ -1667,6 +1729,7 @@ export function App() {
   const [consoleOutputRunnerId, setConsoleOutputRunnerId] = useState("");
   const [consoleAutoRefresh, setConsoleAutoRefresh] = useState(false);
   const [consoleLastCaptureAt, setConsoleLastCaptureAt] = useState("");
+  const [runnerPaneOutputs, setRunnerPaneOutputs] = useState<Record<string, RunnerPaneOutput>>({});
   const [newProjectName, setNewProjectName] = useState("");
   const [newProjectPath, setNewProjectPath] = useState("");
   const [runnerType, setRunnerType] = useState("claude-code");
@@ -1745,6 +1808,15 @@ export function App() {
         .map((row) => [row.runnerId, row])
     );
   }, [usage, activeProject?.id]);
+
+  const liveRunnerKey = useMemo(
+    () =>
+      runners
+        .filter((runner) => runner.state === "running")
+        .map((runner) => `${runner.id}:${runner.session}`)
+        .join("|"),
+    [runners]
+  );
 
   const diskChangeCount = useMemo(() => {
     return (git?.status || "")
@@ -2054,14 +2126,43 @@ export function App() {
     };
   }
 
-  function replaceConsoleOutput(runnerId: string, output: string) {
+  function updateRunnerPaneOutput(runnerId: string, output: string, status: RunnerPaneOutput["status"] = "live") {
+    if (!runnerId) return;
+    setRunnerPaneOutputs((current) => ({
+      ...current,
+      [runnerId]: {
+        output,
+        at: new Date().toISOString(),
+        status
+      }
+    }));
+  }
+
+  function appendRunnerPaneOutput(runnerId: string, output: string) {
+    if (!runnerId) return;
+    setRunnerPaneOutputs((current) => {
+      const previous = current[runnerId]?.output || "";
+      return {
+        ...current,
+        [runnerId]: {
+          output: `${previous ? `${previous}\n\n` : ""}${output}`,
+          at: new Date().toISOString(),
+          status: "live"
+        }
+      };
+    });
+  }
+
+  function replaceConsoleOutput(runnerId: string, output: string, status: RunnerPaneOutput["status"] = "live") {
     setConsoleOutputRunnerId(runnerId);
     setConsoleOutput(output);
+    updateRunnerPaneOutput(runnerId, output, status);
   }
 
   function appendConsoleOutput(runnerId: string, output: string) {
     setConsoleOutputRunnerId(runnerId);
     setConsoleOutput((current) => `${consoleOutputRunnerId === runnerId && current ? `${current}\n\n` : ""}${output}`);
+    appendRunnerPaneOutput(runnerId, output);
   }
 
   function titleFromTask(value = task) {
@@ -2312,6 +2413,7 @@ export function App() {
     setConsoleInput("");
     setConsoleOutput("");
     setConsoleOutputRunnerId("");
+    setRunnerPaneOutputs({});
     setLastRunnerOutput("");
     setSessions([]);
     setActiveSessionId("");
@@ -2365,6 +2467,33 @@ export function App() {
     return () => window.clearInterval(interval);
   }, [activeProject?.id, commandRunner?.id, commandRunner?.state, consoleAutoRefresh]);
 
+  useEffect(() => {
+    if (!activeProject || !liveRunnerKey) return;
+    const liveRunners = runners.filter((runner) => runner.state === "running");
+    let cancelled = false;
+
+    async function peekLiveRunners() {
+      await Promise.all(
+        liveRunners.map(async (runner) => {
+          try {
+            const result = await postRunnerAction(runner, "peek");
+            if (cancelled) return;
+            updateRunnerPaneOutput(runner.id, result.output || "Captured an empty tmux pane.");
+          } catch (error) {
+            if (!cancelled) updateRunnerPaneOutput(runner.id, `Live peek failed: ${String(error)}`, "error");
+          }
+        })
+      );
+    }
+
+    void peekLiveRunners();
+    const interval = window.setInterval(() => void peekLiveRunners(), 2500);
+    return () => {
+      cancelled = true;
+      window.clearInterval(interval);
+    };
+  }, [activeProject?.id, liveRunnerKey]);
+
   async function runRunner(
     runner: Runner,
     action: "start" | "stop" | "restart" | "status" | "capture" | "send" | "open",
@@ -2397,6 +2526,9 @@ export function App() {
       const output =
         [result.stdout, result.stderr].filter(Boolean).join("\n") ||
         `${action}: ${result.ok === false ? "failed" : "ok"}${typeof result.code === "number" ? ` (exit ${result.code})` : ""}`;
+      if (action !== "open") {
+        updateRunnerPaneOutput(runner.id, output, result.ok === false ? "error" : "live");
+      }
       const capturedDecisionCount = action === "capture" && result.ok !== false ? captureDecisions(output, runner) : 0;
       setLastRunnerOutput(
         capturedDecisionCount > 0
@@ -2487,7 +2619,7 @@ export function App() {
       }
     } catch (error) {
       const message = `Console ${mode} failed: ${String(error)}`;
-      replaceConsoleOutput(runner.id, message);
+      replaceConsoleOutput(runner.id, message, "error");
       if (!options.silent) setLastRunnerOutput(message);
     } finally {
       if (!options.silent) setBusyRunner(null);
@@ -2546,7 +2678,7 @@ export function App() {
       await refresh(activeProject);
     } catch (error) {
       const message = `Slash command failed: ${String(error)}`;
-      replaceConsoleOutput(commandRunner.id, message);
+      replaceConsoleOutput(commandRunner.id, message, "error");
       setLastRunnerOutput(message);
     } finally {
       setBusyRunner(null);
@@ -2591,7 +2723,7 @@ export function App() {
       await refresh(activeProject);
     } catch (error) {
       const message = `Console send failed: ${String(error)}`;
-      replaceConsoleOutput(commandRunner.id, message);
+      replaceConsoleOutput(commandRunner.id, message, "error");
       setLastRunnerOutput(message);
     } finally {
       setBusyRunner(null);
@@ -3337,7 +3469,11 @@ export function App() {
   const showFocusEvidence = activeStep === "Review" || activeStep === "Verify";
   const selectedRunnerForComposer = commandRunner || focusRunners[0];
   const selectedConsoleOutput =
-    selectedRunnerForComposer && consoleOutputRunnerId === selectedRunnerForComposer.id ? consoleOutput : "";
+    selectedRunnerForComposer && consoleOutputRunnerId === selectedRunnerForComposer.id
+      ? consoleOutput
+      : selectedRunnerForComposer
+        ? runnerPaneOutputs[selectedRunnerForComposer.id]?.output || ""
+        : "";
   const needsFirstProjectSetup = Boolean(config && (config.source.kind !== "local" || !activeProject?.path || looksLikePlaceholderPath(activeProject.path)));
   const projectIdPreview = clientId(newProjectName.trim() || activeProject?.name || "your-project", "your-project");
   const firstRun = lang === "zh-TW"
@@ -3424,13 +3560,21 @@ export function App() {
         <section className="focus-side-block">
           <div className="section-label">{ui.sidebar.runnerHealth}</div>
           {runners.length ? (
-            runners.map((runner) => (
-              <div className="runner-mini" key={`focus-runner-${runner.id}`}>
-                <RunnerDot state={runner.state} />
-                <span>{runner.session}</span>
-                <small>{runner.state}</small>
-              </div>
-            ))
+            runners.map((runner) => {
+              const configRunner = findConfigRunner(activeConfigProject, runner);
+              const livePane = runnerPaneOutputs[runner.id]?.output || runner.lastOutput || "";
+              const remote = runnerRemoteStatus(runner, configRunner, livePane, lang);
+              return (
+                <div className="runner-mini" key={`focus-runner-${runner.id}`}>
+                  <RunnerDot state={runner.state} />
+                  <span>{runner.session}</span>
+                  <span className="runner-mini-meta">
+                    {remote && <small className={cx("remote-badge", remote.status)}>{remote.label}</small>}
+                    <small>{runner.state}</small>
+                  </span>
+                </div>
+              );
+            })
           ) : (
             <div className="empty-note">{activeProject?.runnerCount ? ui.sidebar.loadingRunners : ui.sidebar.noRunners}</div>
           )}
@@ -3530,6 +3674,10 @@ export function App() {
             const configRunner = findConfigRunner(activeConfigProject, runner);
             const startSummary = runnerStartSummary(configRunner);
             const runnerConsoleOutput = consoleOutputRunnerId === runner.id ? consoleOutput : "";
+            const livePane = runnerPaneOutputs[runner.id];
+            const paneOutput = runnerConsoleOutput || livePane?.output || "";
+            const paneHints = runnerOutputHints(paneOutput, lang);
+            const remote = runnerRemoteStatus(runner, configRunner, paneOutput || runner.lastOutput || "", lang);
             return (
               <article className={cx("focus-agent-pane", isSelected && "selected", isWriter && "writer")} key={`focus-agent-${runner.id}`}>
                 <div className="focus-agent-head">
@@ -3540,12 +3688,20 @@ export function App() {
                   </div>
                   <div>
                     {isWriter && <em>{ui.trust.writer}</em>}
+                    {remote && <span className={cx("remote-badge", remote.status)}>{remote.label}</span>}
                     <RunnerDot state={runner.state} />
                   </div>
                 </div>
                 <div className="focus-agent-output">
-                  {isSelected ? runnerConsoleOutput || ui.console.empty : row ? `${row.lastAction || "idle"} · ${formatTime(row.lastAt)}` : ui.trust.noActivity}
+                  {paneOutput || (runner.state === "running" ? ui.console.empty : row ? `${row.lastAction || "idle"} · ${formatTime(row.lastAt)}` : ui.trust.noActivity)}
                 </div>
+                {paneHints.length > 0 && (
+                  <div className="focus-agent-alerts">
+                    {paneHints.map((hint) => (
+                      <span key={`${runner.id}-${hint}`}>{hint}</span>
+                    ))}
+                  </div>
+                )}
                 <div className="focus-agent-actions">
                   <button
                     className="main-action"
