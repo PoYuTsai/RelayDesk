@@ -339,6 +339,14 @@ button {
   box-shadow: none;
 }
 
+.focus-panel-hint {
+  max-width: 250px;
+  margin: 6px 0 0;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.35;
+}
+
 .focus-status-grid {
   display: grid;
   grid-template-columns: 1fr 1fr;

@@ -482,6 +482,7 @@ const uiCopy: Record<
     decision: {
       label: string;
       title: string;
+      hint: string;
       addPlaceholder: string;
       add: string;
       source: string;
@@ -647,6 +648,7 @@ const uiCopy: Record<
     decision: {
       label: "Decision Inbox",
       title: "Open calls",
+      hint: "Agent questions and disagreements wait here for your final choice.",
       addPlaceholder: "Add a question or decision...",
       add: "Add",
       source: "Source",
@@ -809,8 +811,9 @@ const uiCopy: Record<
       localEvent: "本機事件"
     },
     decision: {
-      label: "Decision Inbox",
+      label: "決策收件匣",
       title: "待決策",
+      hint: "agent 問你的選擇題、卡住點、兩邊不同意見，都先放這裡等你決定。",
       addPlaceholder: "新增問題或決策...",
       add: "新增",
       source: "來源",
@@ -857,7 +860,7 @@ const uiCopy: Record<
       clean: "乾淨",
       noDiff: "沒有 unstaged diff",
       advanced: "進階工具",
-      projectOnboarding: "Project Onboarding",
+      projectOnboarding: "專案設定",
       rulesCapabilities: "規則與能力",
       projectOnboardingEmpty: "刷新後會掃描專案 rules、MCP、skills、prompts、plugins 與 runner profile。",
       agentBriefCopied: "Agent brief 已複製。",
@@ -868,7 +871,7 @@ const uiCopy: Record<
       projectManager: "專案管理",
       projectSessions: "專案與 sessions",
       readiness: "環境檢查",
-      doctorChecks: "Doctor checks",
+      doctorChecks: "環境檢查",
       usage: "使用量 / 活動",
       localRelayTraffic: "本機 relay 活動",
       runnerOps: "Runner 控制",
@@ -895,6 +898,28 @@ function busEventIcon(kind: RelayBusEventKind) {
 const contextSlashCommands = new Set(["/compact", "/resume", "/continue", "/handoff", "/round", "/recap", "/summarize", "/summary"]);
 const destructiveSlashCommands = new Set(["/clear", "/new", "/delete", "/archive", "/quit", "/exit", "/logout", "/stop"]);
 const safeSlashCommands = new Set(["/", "/help", "/status", "/usage", "/diff", "/doctor", "/context", "/cost", "/stats"]);
+
+const decisionDisplayText: Record<Lang, Record<string, string>> = {
+  en: {},
+  "zh-TW": {
+    "Both agents": "兩邊 agent",
+    "Codex review": "Codex review",
+    "First root-cause lane": "第一個 root cause 方向",
+    "Which lane should the builder verify before editing?": "改程式前，builder 要先確認哪一條？",
+    "Image picker permission": "相簿權限 / image picker",
+    "Compressed file path": "壓縮後檔案路徑",
+    "Opener request boundary": "Opener request 邊界",
+    "Evidence gate": "證據門檻",
+    "What evidence must exist before patching?": "開始 patch 前，至少要有哪些證據？",
+    "Device log + screenshot": "device log + 失敗截圖",
+    "Simulator repro only": "只有 simulator repro",
+    "Patch after code read": "讀完 code 後直接 patch"
+  }
+};
+
+function displayDecisionText(value: string, lang: Lang) {
+  return decisionDisplayText[lang][value] || value;
+}
 
 const doctorPriorityIds = [
   "runner-session-unique",
@@ -3547,6 +3572,7 @@ export function App() {
             <div>
               <div className="section-label">{ui.decision.label}</div>
               <h2>{ui.decision.title}</h2>
+              <p className="focus-panel-hint">{ui.decision.hint}</p>
             </div>
             <span className="status-pill">{decisionCounts.open}</span>
           </div>
@@ -3566,8 +3592,8 @@ export function App() {
           <div className="focus-mini-list">
             {decisions.slice(0, 3).map((decision) => (
               <article className="focus-decision-item" key={`focus-decision-${decision.id}`}>
-                <strong>{decision.title}</strong>
-                <p>{decision.prompt}</p>
+                <strong>{displayDecisionText(decision.title, lang)}</strong>
+                <p>{displayDecisionText(decision.prompt, lang)}</p>
                 <div className="decision-options compact">
                   {decision.options.slice(0, 3).map((option) => (
                     <button
@@ -3575,7 +3601,7 @@ export function App() {
                       className={cx("decision-option", decision.selected === option && "active")}
                       onClick={() => updateDecision(decision.id, { selected: option, replyDraft: "", status: "open" })}
                     >
-                      {option}
+                      {displayDecisionText(option, lang)}
                     </button>
                   ))}
                 </div>
@@ -3618,7 +3644,7 @@ export function App() {
           <summary>
             <span>
               <strong>{ui.ops.advanced}</strong>
-              <small>{ui.ops.projectOnboarding} / Doctor / {ui.ops.runnerOps}</small>
+              <small>{ui.ops.projectOnboarding} / {ui.ops.readiness} / {ui.ops.runnerOps}</small>
             </span>
             <Settings2 size={16} />
           </summary>
@@ -4074,21 +4100,21 @@ export function App() {
         <section className="decision-inbox">
           <div className="tray-head">
             <div>
-              <div className="section-label">Decision Inbox</div>
-              <h2>Open calls</h2>
+              <div className="section-label">{ui.decision.label}</div>
+              <h2>{ui.decision.title}</h2>
             </div>
             <div className="decision-compose">
               <input
                 value={decisionDraft}
                 onChange={(event) => setDecisionDraft(event.target.value)}
-                placeholder="Add a question or decision..."
+                placeholder={ui.decision.addPlaceholder}
                 onKeyDown={(event) => {
                   if (event.key === "Enter") addDecision();
                 }}
               />
               <button disabled={!decisionDraft.trim()} onClick={addDecision}>
                 <Plus size={14} />
-                Add
+                {ui.decision.add}
               </button>
             </div>
           </div>
@@ -4105,19 +4131,19 @@ export function App() {
                     <div>
                       <span className="decision-source">
                         <Inbox size={13} />
-                        {decision.source}
+                        {displayDecisionText(decision.source, lang)}
                       </span>
-                      <strong>{decision.title}</strong>
+                      <strong>{displayDecisionText(decision.title, lang)}</strong>
                     </div>
                     <span className={cx("decision-state", decision.status)}>
                       {decision.status !== "open" ? <Check size={13} /> : <CircleDot size={13} />}
                       {decision.status}
                     </span>
                   </div>
-                  <p className="decision-prompt">{decision.prompt}</p>
+                  <p className="decision-prompt">{displayDecisionText(decision.prompt, lang)}</p>
                   <div className="relay-route">
                     <label>
-                      <span>Source</span>
+                      <span>{ui.decision.source}</span>
                       <select
                         value={routedDecision.sourceRunnerId || ""}
                         onChange={(event) => {
@@ -4132,7 +4158,7 @@ export function App() {
                           });
                         }}
                       >
-                        <option value="">Manual / unknown</option>
+                        <option value="">{ui.decision.manual}</option>
                         {runners.map((runner) => (
                           <option value={runner.id} key={`${decision.id}-source-${runner.id}`}>
                             {runner.session}
@@ -4140,14 +4166,14 @@ export function App() {
                         ))}
                       </select>
                     </label>
-                    <div className="relay-arrow">to</div>
+                    <div className="relay-arrow">{ui.decision.to}</div>
                     <label>
-                      <span>Reviewer</span>
+                      <span>{ui.decision.reviewer}</span>
                       <select
                         value={routedDecision.reviewerRunnerId || ""}
                         onChange={(event) => updateDecision(decision.id, { reviewerRunnerId: event.target.value, status: "open" })}
                       >
-                        <option value="">Choose reviewer</option>
+                        <option value="">{ui.decision.chooseReviewer}</option>
                         {runners.map((runner) => (
                           <option value={runner.id} key={`${decision.id}-reviewer-${runner.id}`}>
                             {runner.session}
@@ -4157,9 +4183,15 @@ export function App() {
                     </label>
                   </div>
                   <div className="relay-trail">
-                    <span className={cx(decision.sentAt && "done")}>review {decision.sentAt ? formatTime(decision.sentAt) : "not sent"}</span>
-                    <span className={cx(decision.reviewedAt && "done")}>capture {decision.reviewedAt ? formatTime(decision.reviewedAt) : "waiting"}</span>
-                    <span className={cx(decision.returnedAt && "done")}>return {decision.returnedAt ? formatTime(decision.returnedAt) : "pending"}</span>
+                    <span className={cx(decision.sentAt && "done")}>
+                      {decision.sentAt ? ui.decision.reviewAt(formatTime(decision.sentAt)) : ui.decision.reviewNotSent}
+                    </span>
+                    <span className={cx(decision.reviewedAt && "done")}>
+                      {decision.reviewedAt ? ui.decision.captureAt(formatTime(decision.reviewedAt)) : ui.decision.captureWaiting}
+                    </span>
+                    <span className={cx(decision.returnedAt && "done")}>
+                      {decision.returnedAt ? ui.decision.returnAt(formatTime(decision.returnedAt)) : ui.decision.returnPending}
+                    </span>
                   </div>
                   <div className="decision-options">
                     {decision.options.map((option) => (
@@ -4168,7 +4200,7 @@ export function App() {
                         className={cx("decision-option", decision.selected === option && "active")}
                         onClick={() => updateDecision(decision.id, { selected: option, replyDraft: "", status: "open" })}
                       >
-                        {option}
+                        {displayDecisionText(option, lang)}
                       </button>
                     ))}
                   </div>
@@ -4176,11 +4208,11 @@ export function App() {
                     className="decision-note"
                     value={decision.note}
                     onChange={(event) => updateDecision(decision.id, { note: event.target.value, status: "open" })}
-                    placeholder="Decision context or reviewer verdict..."
+                    placeholder={ui.decision.notePlaceholder}
                   />
                   <div className="reply-draft-box">
                     <div className="reply-draft-head">
-                      <span>Cross-agent reply</span>
+                      <span>{ui.decision.crossAgentReply}</span>
                       <div>
                         <button
                           onClick={() =>
@@ -4191,7 +4223,7 @@ export function App() {
                             })
                           }
                         >
-                          Ask reviewer
+                          {ui.decision.askReviewer}
                         </button>
                         <button
                           onClick={() =>
@@ -4202,11 +4234,11 @@ export function App() {
                             })
                           }
                         >
-                          Return verdict
+                          {ui.decision.returnVerdict}
                         </button>
                         <button onClick={() => void copyDecisionReply(decision)}>
                           <Copy size={13} />
-                          {copiedDecision === decision.id ? "Copied" : "Copy"}
+                          {copiedDecision === decision.id ? ui.decision.copied : ui.decision.copy}
                         </button>
                       </div>
                     </div>
@@ -4214,7 +4246,7 @@ export function App() {
                       className="reply-draft"
                       value={decision.replyDraft}
                       onChange={(event) => updateDecision(decision.id, { replyDraft: event.target.value, status: "open" })}
-                      placeholder="Paste or build the exact reply you want to send to the other agent..."
+                      placeholder={ui.decision.replyPlaceholder}
                     />
                   </div>
                   <div className="decision-footer">
@@ -4224,15 +4256,15 @@ export function App() {
                     <div className="decision-actions">
                       <button disabled={!!busyRunner || !reviewerRunner || reviewerRunner.state !== "running"} onClick={() => void sendReviewRequest(decision)}>
                         <Send size={13} />
-                        Send review
+                        {ui.decision.sendReview}
                       </button>
                       <button disabled={!!busyRunner || !reviewerRunner || reviewerRunner.state !== "running"} onClick={() => void captureReviewerVerdict(decision)}>
                         <FileDiff size={13} />
-                        Capture reviewer
+                        {ui.decision.captureReviewer}
                       </button>
                       <button disabled={!!busyRunner || !sourceRunner || sourceRunner.state !== "running"} onClick={() => void returnVerdictToSource(decision)}>
                         <Send size={13} />
-                        Return source
+                        {ui.decision.returnSource}
                       </button>
                     </div>
                   </div>
