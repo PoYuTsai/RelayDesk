@@ -8,6 +8,7 @@
     "dev": "vite --host 127.0.0.1",
     "api": "node server/relay-server.mjs",
     "build": "tsc && vite build",
+    "check:public": "node scripts/public-scan.mjs",
     "preview": "vite preview --host 127.0.0.1"
   },
   "dependencies": {

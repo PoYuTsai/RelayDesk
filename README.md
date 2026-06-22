@@ -296,6 +296,17 @@ Saved snapshots go under `.relaydesk/evidence/`, which is gitignored.
 - [Compatibility](docs/compatibility.md)
 - [Release Checklist](docs/release-checklist.md)
 - [Open Source Roadmap](docs/open-source-roadmap.md)
+- [Contributing](CONTRIBUTING.md)
+- [Security](SECURITY.md)
+
+## CI And Public Safety
+
+GitHub Actions runs `npm ci`, `npm run check:public`,
+`node --check server/relay-server.mjs`, and `npm run build`.
+
+`npm run check:public` scans tracked files for private local paths, personal
+email addresses, common API key shapes, and bearer tokens. It does not scan
+ignored local runtime files such as `relay.local.json` or `.relaydesk/`.
 
 ## Security
 

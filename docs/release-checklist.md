@@ -44,6 +44,7 @@ Review every changed file before publishing.
 ```powershell
 npm.cmd run build
 node --check server/relay-server.mjs
+npm.cmd run check:public
 ```
 
 Start the API and verify:
@@ -89,6 +90,7 @@ Before creating the GitHub repo:
 - Confirm license.
 - Confirm README and README.zh-TW are ready.
 - Confirm no local-only config is tracked.
+- Confirm GitHub Actions CI exists and runs the public scan.
 - Confirm screenshots in docs are safe for public use.
 
 ## 7. Optional GitHub setup
