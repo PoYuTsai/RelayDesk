@@ -245,6 +245,7 @@ function emptySessionState(body = {}) {
     task: String(body.task || ""),
     decisions: Array.isArray(body.decisions) ? body.decisions : [],
     evidence: Array.isArray(body.evidence) ? body.evidence : [],
+    busEvents: Array.isArray(body.busEvents) ? body.busEvents : [],
     selectedEvidenceId: String(body.selectedEvidenceId || ""),
     writerRunnerId: String(body.writerRunnerId || ""),
     commandRunnerId: String(body.commandRunnerId || ""),

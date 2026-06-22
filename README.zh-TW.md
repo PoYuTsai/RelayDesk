@@ -38,6 +38,7 @@ RelayDesk 的目標是把這個來回變成：
 - Capture：把 terminal/tmux 裡的問題和選項整理進 Decision Inbox。
 - Cross-agent reply：把一邊 agent 的問題整理成可以送給另一邊 agent 的草稿。
 - 雙向 relay draft：先請 reviewer 挑戰決策，再把最終 verdict 回給原本的 builder。
+- Relay Bus timeline：在每個 session 記錄 message、review request、ACK、capture、verdict、consensus。
 - Snapshot：只截你選的 agent 對話視窗，存成本機 evidence，並建立二次確認 decision。
 - Evidence tray：放截圖、影片、log、repro material。
 - Git 狀態和 diff stat。

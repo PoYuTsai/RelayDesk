@@ -41,6 +41,8 @@ Example flow:
 - Cross-agent reply drafts to send a decision to another runner.
 - Two-way relay draft builders: ask a reviewer to challenge a decision, then
   return the final verdict to the source agent.
+- Relay Bus timeline for message, review request, ACK, capture, verdict, and
+  consensus events inside each session.
 - Per-runner conversation Snapshot that saves a selected agent window as local
   evidence and creates a review decision.
 - Evidence tray for screenshots, videos, logs, and repro material.

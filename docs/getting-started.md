@@ -250,6 +250,11 @@ If an agent asks a question:
 8. Edit the final verdict if needed.
 9. Click `Return source` to send the final decision back to the source agent.
 
+Relay Bus records the protocol trail for the same session: decision created,
+review request sent, local ACK, reviewer capture, verdict returned, and
+consensus recorded. This is local session metadata under `.relaydesk/`; it is
+not sent to a cloud service by RelayDesk.
+
 ## 13. Watch local activity
 
 The Usage / Activity card shows whether RelayDesk is actually moving work:

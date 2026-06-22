@@ -649,6 +649,7 @@ h2 {
 .task-panel,
 .consensus-panel,
 .session-console,
+.relay-bus-panel,
 .evidence-tray,
 .decision-inbox,
 .ops-card {
@@ -947,6 +948,112 @@ h2 {
 .decision-inbox {
   margin-top: 16px;
   padding: 16px;
+}
+
+.relay-bus-panel {
+  margin-top: 16px;
+  padding: 16px;
+}
+
+.bus-stats {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(74px, 1fr));
+  gap: 8px;
+  min-width: min(460px, 100%);
+}
+
+.bus-stats span {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+  padding: 8px 9px;
+  background: var(--panel-2);
+  border: 1px solid var(--line-soft);
+  border-radius: 8px;
+}
+
+.bus-stats strong {
+  color: var(--text);
+  font-size: 16px;
+}
+
+.bus-stats span {
+  color: var(--muted);
+  font-size: 10px;
+  font-weight: 900;
+  text-transform: uppercase;
+}
+
+.bus-event-list {
+  display: grid;
+  gap: 10px;
+  margin-top: 14px;
+}
+
+.bus-event {
+  display: grid;
+  gap: 7px;
+  padding: 11px;
+  background: var(--panel-2);
+  border: 1px solid var(--line-soft);
+  border-radius: 8px;
+}
+
+.bus-event.sent,
+.bus-event.acked,
+.bus-event.returned {
+  border-color: rgba(45, 212, 191, 0.26);
+}
+
+.bus-event.captured {
+  border-color: rgba(245, 158, 11, 0.28);
+}
+
+.bus-event-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.bus-event-kind {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 24px;
+  padding: 0 8px;
+  color: #d8fff6;
+  background: rgba(45, 212, 191, 0.09);
+  border: 1px solid rgba(45, 212, 191, 0.24);
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 900;
+}
+
+.bus-event-head time,
+.bus-event small {
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 800;
+}
+
+.bus-event strong,
+.bus-event p,
+.bus-event small {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.bus-event strong {
+  font-size: 13px;
+}
+
+.bus-event p {
+  margin: 0;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.45;
 }
 
 .decision-compose {
@@ -2557,6 +2664,11 @@ pre {
   }
 
   .session-registry-stats span {
+    min-width: 0;
+  }
+
+  .bus-stats {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
     min-width: 0;
   }
 

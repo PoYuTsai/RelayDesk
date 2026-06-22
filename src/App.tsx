@@ -192,6 +192,24 @@ type DecisionItem = {
   returnedAt?: string;
 };
 
+type RelayBusEventKind = "message" | "decision" | "review_request" | "ack" | "capture" | "verdict" | "consensus" | "snapshot";
+type RelayBusEventStatus = "open" | "queued" | "sent" | "acked" | "captured" | "returned";
+
+type RelayBusEvent = {
+  id: string;
+  at: string;
+  kind: RelayBusEventKind;
+  status: RelayBusEventStatus;
+  title: string;
+  summary: string;
+  sourceRunnerId?: string;
+  targetRunnerId?: string;
+  sourceName?: string;
+  targetName?: string;
+  decisionId?: string;
+  evidenceId?: string;
+};
+
 type RelayRouteContext = {
   sourceName?: string;
   reviewerName?: string;
@@ -202,6 +220,7 @@ type RelaySessionState = {
   task: string;
   decisions: DecisionItem[];
   evidence: Evidence[];
+  busEvents: RelayBusEvent[];
   selectedEvidenceId: string;
   writerRunnerId: string;
   commandRunnerId: string;
@@ -258,6 +277,31 @@ const slashRiskCopy: Record<SlashRisk, { label: string; description: string }> =
     description: "RelayDesk will pass it through exactly; behavior depends on your agent setup."
   }
 };
+
+const busEventCopy: Record<RelayBusEventKind, { label: string; icon: "send" | "check" | "file" | "workflow" }> = {
+  message: { label: "Message", icon: "send" },
+  decision: { label: "Decision", icon: "workflow" },
+  review_request: { label: "Review request", icon: "send" },
+  ack: { label: "ACK", icon: "check" },
+  capture: { label: "Capture", icon: "file" },
+  verdict: { label: "Verdict", icon: "send" },
+  consensus: { label: "Consensus", icon: "check" },
+  snapshot: { label: "Snapshot", icon: "file" }
+};
+
+function compactSummary(value: string, max = 180) {
+  const cleaned = value.replace(/\s+/g, " ").trim();
+  if (cleaned.length <= max) return cleaned;
+  return `${cleaned.slice(0, max - 3)}...`;
+}
+
+function busEventIcon(kind: RelayBusEventKind) {
+  const icon = busEventCopy[kind].icon;
+  if (icon === "send") return <Send size={13} />;
+  if (icon === "check") return <Check size={13} />;
+  if (icon === "file") return <FileDiff size={13} />;
+  return <Workflow size={13} />;
+}
 
 const contextSlashCommands = new Set(["/compact", "/resume", "/continue", "/handoff", "/round", "/recap", "/summarize", "/summary"]);
 const destructiveSlashCommands = new Set(["/clear", "/new", "/delete", "/archive", "/quit", "/exit", "/logout", "/stop"]);
@@ -673,11 +717,14 @@ function buildSessionBrief(input: {
   runners: Runner[];
   decisions: DecisionItem[];
   evidence: Evidence[];
+  busEvents: RelayBusEvent[];
   git: GitContext | null;
 }) {
   const openDecisions = input.decisions.filter((item) => item.status === "open").length;
   const relayDecisions = input.decisions.filter((item) => item.status === "reviewing" || item.status === "reviewed").length;
   const returnedDecisions = input.decisions.filter((item) => item.status === "returned").length;
+  const ackEvents = input.busEvents.filter((item) => item.kind === "ack" || item.status === "acked").length;
+  const consensusEvents = input.busEvents.filter((item) => item.kind === "consensus").length;
   return [
     `RelayDesk session: ${input.sessionKey}`,
     `Project: ${input.projectName}`,
@@ -687,6 +734,7 @@ function buildSessionBrief(input: {
     `Runners: ${input.runners.map((runner) => `${runner.name}=${runner.state}`).join(", ") || "none"}`,
     `Decisions: ${openDecisions} open / ${relayDecisions} in relay / ${returnedDecisions} returned`,
     `Evidence: ${input.evidence.length} item${input.evidence.length === 1 ? "" : "s"}`,
+    `Relay Bus: ${input.busEvents.length} events / ${ackEvents} ACK / ${consensusEvents} consensus`,
     "",
     "Use this brief to continue the same local-agent workflow. Verify disk state before trusting any agent claim."
   ].join("\n");
@@ -861,6 +909,7 @@ export function App() {
   const [evidence, setEvidence] = useState(seedEvidence);
   const [selectedEvidenceId, setSelectedEvidenceId] = useState(seedEvidence[0]?.id || "");
   const [decisions, setDecisions] = useState(seedDecisions);
+  const [busEvents, setBusEvents] = useState<RelayBusEvent[]>([]);
   const [decisionDraft, setDecisionDraft] = useState("");
   const [copiedDecision, setCopiedDecision] = useState("");
   const [copiedSetup, setCopiedSetup] = useState("");
@@ -1035,6 +1084,17 @@ export function App() {
     };
   }, [decisions]);
 
+  const busCounts = useMemo(() => {
+    return {
+      total: busEvents.length,
+      pending: busEvents.filter((item) => item.status === "open" || item.status === "queued" || item.status === "sent").length,
+      acked: busEvents.filter((item) => item.kind === "ack" || item.status === "acked").length,
+      consensus: busEvents.filter((item) => item.kind === "consensus").length
+    };
+  }, [busEvents]);
+
+  const visibleBusEvents = useMemo(() => busEvents.slice(0, 8), [busEvents]);
+
   const setupRows = useMemo(() => {
     const pathChecks = (doctor?.checks || []).filter((item) => item.id.startsWith("project-"));
     const terminalChecks = ["wsl", "wsl-tmux", "wsl-tmux-smoke", "tmux", "tmux-smoke"].map((id) => doctorById.get(id)).filter(Boolean) as DoctorCheck[];
@@ -1143,6 +1203,7 @@ export function App() {
       task,
       decisions,
       evidence,
+      busEvents,
       selectedEvidenceId,
       writerRunnerId,
       commandRunnerId,
@@ -1161,6 +1222,7 @@ export function App() {
     setTask(state.task || "");
     setDecisions(Array.isArray(state.decisions) ? state.decisions : []);
     setEvidence(Array.isArray(state.evidence) ? state.evidence : []);
+    setBusEvents(Array.isArray(state.busEvents) ? state.busEvents : []);
     setSelectedEvidenceId(state.selectedEvidenceId || state.evidence?.[0]?.id || "");
     setWriterRunnerId(state.writerRunnerId || "");
     setCommandRunnerId(state.commandRunnerId || "");
@@ -1214,6 +1276,7 @@ export function App() {
       task: "",
       decisions: [],
       evidence: [],
+      busEvents: [],
       selectedEvidenceId: "",
       writerRunnerId: writerRunner?.id || "",
       commandRunnerId: commandRunner?.id || "",
@@ -1398,6 +1461,7 @@ export function App() {
     task,
     decisions,
     evidence,
+    busEvents,
     selectedEvidenceId,
     writerRunnerId,
     commandRunnerId,
@@ -1431,7 +1495,7 @@ export function App() {
   async function runRunner(
     runner: Runner,
     action: "start" | "stop" | "restart" | "status" | "capture" | "send" | "open",
-    options: { text?: string; confirmMessage?: string; onSuccess?: () => void } = {}
+    options: { text?: string; confirmMessage?: string; onSuccess?: () => void; suppressBusEvent?: boolean } = {}
   ) {
     if (!activeProject) return;
     if (["stop", "restart"].includes(action)) {
@@ -1466,7 +1530,19 @@ export function App() {
           ? `${output}\n\nDecision Inbox: captured ${capturedDecisionCount} open call${capturedDecisionCount === 1 ? "" : "s"}.`
           : output
       );
-      if (result.ok !== false) options.onSuccess?.();
+      if (result.ok !== false) {
+        options.onSuccess?.();
+        if (action === "send" && !options.suppressBusEvent) {
+          appendBusEvent({
+            kind: "message",
+            status: "sent",
+            title: `Sent to ${runner.session}`,
+            summary: options.text ?? task,
+            targetRunnerId: runner.id,
+            targetName: runner.session
+          });
+        }
+      }
       await refresh(activeProject);
     } catch (error) {
       setLastRunnerOutput(String(error));
@@ -1574,6 +1650,14 @@ export function App() {
     setBusyRunner(`${commandRunner.id}:slash-send`);
     try {
       await postRunnerAction(commandRunner, "send", { text: command });
+      appendBusEvent({
+        kind: "message",
+        status: "sent",
+        title: `Slash command to ${commandRunner.session}`,
+        summary: command,
+        targetRunnerId: commandRunner.id,
+        targetName: commandRunner.session
+      });
       setSlashCommand(command);
       if (options.source === "console") setConsoleInput("");
       const pendingMessage = [
@@ -1619,6 +1703,14 @@ export function App() {
     setBusyRunner(`${commandRunner.id}:console-send`);
     try {
       await postRunnerAction(commandRunner, "send", { text });
+      appendBusEvent({
+        kind: "message",
+        status: "sent",
+        title: `Console message to ${commandRunner.session}`,
+        summary: text,
+        targetRunnerId: commandRunner.id,
+        targetName: commandRunner.session
+      });
       setConsoleInput("");
       setConsoleOutput((current) => `${current ? `${current}\n\n` : ""}[RelayDesk sent to ${commandRunner.session}]\n${text}`);
       await new Promise<void>((resolve) => window.setTimeout(resolve, 650));
@@ -1702,6 +1794,30 @@ export function App() {
         snapshotDecision,
         ...current
       ].slice(0, 12));
+      appendBusEvent({
+        kind: "snapshot",
+        status: "captured",
+        title: `Snapshot captured from ${runner.session}`,
+        summary: `Saved ${saved.name} for second-pass review.`,
+        sourceRunnerId: runner.id,
+        sourceName: runner.session,
+        targetRunnerId: reviewerRunnerId,
+        targetName: reviewerRunner?.session,
+        decisionId: snapshotDecision.id,
+        evidenceId: evidenceItem.id
+      });
+      appendBusEvent({
+        kind: "decision",
+        status: "open",
+        title: snapshotDecision.title,
+        summary: snapshotDecision.prompt,
+        sourceRunnerId: runner.id,
+        sourceName: runner.session,
+        targetRunnerId: reviewerRunnerId,
+        targetName: reviewerRunner?.session,
+        decisionId: snapshotDecision.id,
+        evidenceId: evidenceItem.id
+      });
       setLastRunnerOutput(`Snapshot saved and review card drafted.\nWindows: ${saved.hostPath}\nWSL: ${saved.wslPath}`);
       await refresh(activeProject);
     } catch (error) {
@@ -1734,6 +1850,21 @@ export function App() {
 
   function updateEvidence(id: string, patch: Partial<Evidence>) {
     setEvidence((current) => current.map((item) => (item.id === id ? { ...item, ...patch } : item)));
+  }
+
+  function appendBusEvent(input: Omit<RelayBusEvent, "id" | "at"> & Partial<Pick<RelayBusEvent, "id" | "at">>) {
+    const sourceRunner = input.sourceRunnerId ? runnerById(input.sourceRunnerId) : undefined;
+    const targetRunner = input.targetRunnerId ? runnerById(input.targetRunnerId) : undefined;
+    const event: RelayBusEvent = {
+      ...input,
+      id: input.id || `bus-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+      at: input.at || new Date().toISOString(),
+      sourceName: input.sourceName || sourceRunner?.session || input.sourceRunnerId || "",
+      targetName: input.targetName || targetRunner?.session || input.targetRunnerId || "",
+      summary: compactSummary(input.summary)
+    };
+    setBusEvents((current) => [event, ...current].slice(0, 40));
+    return event;
   }
 
   function evidenceSourceRunner(item: Evidence) {
@@ -1784,13 +1915,26 @@ export function App() {
   async function createEvidenceRelay(item = selectedEvidence, options: { send?: boolean } = {}) {
     if (!item) return;
     const evidenceDecision = buildEvidenceDecision(item);
+    const sourceRunner = evidenceSourceRunner(item);
+    const reviewerRunner = evidenceReviewerRunner(item);
     setDecisions((current) => [evidenceDecision, ...current].slice(0, 12));
+    appendBusEvent({
+      kind: "decision",
+      status: options.send ? "queued" : "open",
+      title: evidenceDecision.title,
+      summary: evidenceDecision.prompt,
+      sourceRunnerId: sourceRunner?.id,
+      sourceName: sourceRunner?.session || item.source || "Evidence tray",
+      targetRunnerId: reviewerRunner?.id,
+      targetName: reviewerRunner?.session,
+      decisionId: evidenceDecision.id,
+      evidenceId: item.id
+    });
     if (!options.send) {
       setLastRunnerOutput(`Evidence review drafted for ${item.name}.`);
       return;
     }
 
-    const reviewerRunner = evidenceReviewerRunner(item);
     if (!reviewerRunner || reviewerRunner.state !== "running") {
       setLastRunnerOutput(`Evidence review drafted. Start ${reviewerRunner?.session || "the reviewer runner"} before sending it.`);
       return;
@@ -1799,11 +1943,36 @@ export function App() {
     await runRunner(reviewerRunner, "send", {
       text: evidenceDecision.replyDraft,
       confirmMessage: `Send evidence review to ${reviewerRunner.session}?`,
-      onSuccess: () =>
+      onSuccess: () => {
+        appendBusEvent({
+          kind: "review_request",
+          status: "sent",
+          title: `Evidence review sent to ${reviewerRunner.session}`,
+          summary: evidenceDecision.replyDraft,
+          sourceRunnerId: sourceRunner?.id,
+          sourceName: sourceRunner?.session || item.source || "Evidence tray",
+          targetRunnerId: reviewerRunner.id,
+          targetName: reviewerRunner.session,
+          decisionId: evidenceDecision.id,
+          evidenceId: item.id
+        });
+        appendBusEvent({
+          kind: "ack",
+          status: "acked",
+          title: `${reviewerRunner.session} accepted review handoff`,
+          summary: "RelayDesk send-keys completed for the evidence review request.",
+          sourceName: "RelayDesk",
+          targetRunnerId: reviewerRunner.id,
+          targetName: reviewerRunner.session,
+          decisionId: evidenceDecision.id,
+          evidenceId: item.id
+        });
         updateDecision(evidenceDecision.id, {
           status: "reviewing",
           sentAt: new Date().toISOString()
-        })
+        });
+      },
+      suppressBusEvent: true
     });
   }
 
@@ -1912,6 +2081,18 @@ export function App() {
       });
       return next.length ? [...next, ...current].slice(0, 12) : current;
     });
+    incoming.forEach((item) =>
+      appendBusEvent({
+        kind: "decision",
+        status: "open",
+        title: item.title,
+        summary: item.prompt,
+        sourceRunnerId: item.sourceRunnerId,
+        sourceName: item.source,
+        targetRunnerId: item.reviewerRunnerId,
+        decisionId: item.id
+      })
+    );
     return incoming.length;
   }
 
@@ -1923,22 +2104,30 @@ export function App() {
     const value = decisionDraft.trim();
     if (!value) return;
     const title = value.length > 52 ? `${value.slice(0, 49)}...` : value;
-    setDecisions((current) => [
-      {
-        id: `decision-${Date.now()}`,
-        source: "You",
-        sourceRunnerId: writerRunner?.id || "",
-        reviewerRunnerId: defaultReviewerId(writerRunner?.id || ""),
-        title,
-        prompt: value,
-        options: ["Proceed", "Hold", "Ask both agents"],
-        selected: "Proceed",
-        note: "",
-        replyDraft: "",
-        status: "open"
-      },
-      ...current
-    ]);
+    const decision: DecisionItem = {
+      id: `decision-${Date.now()}`,
+      source: "You",
+      sourceRunnerId: writerRunner?.id || "",
+      reviewerRunnerId: defaultReviewerId(writerRunner?.id || ""),
+      title,
+      prompt: value,
+      options: ["Proceed", "Hold", "Ask both agents"],
+      selected: "Proceed",
+      note: "",
+      replyDraft: "",
+      status: "open"
+    };
+    setDecisions((current) => [decision, ...current]);
+    appendBusEvent({
+      kind: "decision",
+      status: "open",
+      title: decision.title,
+      summary: decision.prompt,
+      sourceName: "You",
+      sourceRunnerId: decision.sourceRunnerId,
+      targetRunnerId: decision.reviewerRunnerId,
+      decisionId: decision.id
+    });
     setDecisionDraft("");
   }
 
@@ -1968,13 +2157,36 @@ export function App() {
     await runRunner(reviewerRunner, "send", {
       text,
       confirmMessage: `Send review request to ${reviewerRunner.session}?`,
-      onSuccess: () =>
+      onSuccess: () => {
+        appendBusEvent({
+          kind: "review_request",
+          status: "sent",
+          title: `Review request sent to ${reviewerRunner.session}`,
+          summary: text,
+          sourceRunnerId: patch.sourceRunnerId,
+          sourceName: route.sourceName || decision.source,
+          targetRunnerId: reviewerRunner.id,
+          targetName: reviewerRunner.session,
+          decisionId: decision.id
+        });
+        appendBusEvent({
+          kind: "ack",
+          status: "acked",
+          title: `${reviewerRunner.session} accepted review handoff`,
+          summary: "RelayDesk send-keys completed for the review request.",
+          sourceName: "RelayDesk",
+          targetRunnerId: reviewerRunner.id,
+          targetName: reviewerRunner.session,
+          decisionId: decision.id
+        });
         updateDecision(decision.id, {
           ...patch,
           replyDraft: text,
           status: "reviewing",
           sentAt: new Date().toISOString()
-        })
+        });
+      },
+      suppressBusEvent: true
     });
   }
 
@@ -2005,6 +2217,17 @@ export function App() {
         status: "reviewed",
         reviewedAt: new Date().toISOString()
       });
+      appendBusEvent({
+        kind: "capture",
+        status: "captured",
+        title: `Reviewer capture from ${reviewerRunner.session}`,
+        summary: result.output || "Captured an empty tmux pane.",
+        sourceRunnerId: reviewerRunner.id,
+        sourceName: reviewerRunner.session,
+        targetRunnerId: patch.sourceRunnerId,
+        targetName: relayRoute(nextDecision).sourceName,
+        decisionId: decision.id
+      });
       setLastRunnerOutput(`Reviewer verdict captured from ${reviewerRunner.session}.`);
       await refresh(activeProject);
     } catch (error) {
@@ -2026,13 +2249,37 @@ export function App() {
     await runRunner(sourceRunner, "send", {
       text,
       confirmMessage: `Return verdict to ${sourceRunner.session}?`,
-      onSuccess: () =>
+      onSuccess: () => {
+        appendBusEvent({
+          kind: "verdict",
+          status: "returned",
+          title: `Verdict returned to ${sourceRunner.session}`,
+          summary: text,
+          sourceRunnerId: patch.reviewerRunnerId,
+          sourceName: route.reviewerName || "Reviewer",
+          targetRunnerId: sourceRunner.id,
+          targetName: sourceRunner.session,
+          decisionId: decision.id
+        });
+        appendBusEvent({
+          kind: "consensus",
+          status: "returned",
+          title: `Consensus recorded: ${decision.selected}`,
+          summary: `${decision.title}: ${decision.selected}`,
+          sourceRunnerId: patch.reviewerRunnerId,
+          sourceName: route.reviewerName || "Reviewer",
+          targetRunnerId: sourceRunner.id,
+          targetName: sourceRunner.session,
+          decisionId: decision.id
+        });
         updateDecision(decision.id, {
           ...patch,
           replyDraft: text,
           status: "returned",
           returnedAt: new Date().toISOString()
-        })
+        });
+      },
+      suppressBusEvent: true
     });
   }
 
@@ -2095,6 +2342,7 @@ export function App() {
       runners,
       decisions,
       evidence,
+      busEvents,
       git
     });
     try {
@@ -2570,6 +2818,56 @@ export function App() {
                 {preset.label}
               </button>
             ))}
+          </div>
+        </section>
+
+        <section className="relay-bus-panel" data-testid="relay-bus-panel">
+          <div className="tray-head">
+            <div>
+              <div className="section-label">Relay Bus</div>
+              <h2>Two-way protocol</h2>
+            </div>
+            <div className="bus-stats">
+              <span>
+                <strong>{busCounts.total}</strong>
+                events
+              </span>
+              <span>
+                <strong>{busCounts.pending}</strong>
+                pending
+              </span>
+              <span>
+                <strong>{busCounts.acked}</strong>
+                ACK
+              </span>
+              <span>
+                <strong>{busCounts.consensus}</strong>
+                consensus
+              </span>
+            </div>
+          </div>
+          <div className="bus-event-list">
+            {visibleBusEvents.map((event) => {
+              const route = [event.sourceName || "You", event.targetName].filter(Boolean).join(" -> ");
+              return (
+                <article className={cx("bus-event", event.kind, event.status)} key={event.id}>
+                  <div className="bus-event-head">
+                    <span className="bus-event-kind">
+                      {busEventIcon(event.kind)}
+                      {busEventCopy[event.kind].label}
+                    </span>
+                    <time>{formatTime(event.at)}</time>
+                  </div>
+                  <strong>{event.title}</strong>
+                  <p>{event.summary}</p>
+                  <small>
+                    {route || "local event"}
+                    {event.decisionId ? ` / ${event.decisionId}` : ""}
+                  </small>
+                </article>
+              );
+            })}
+            {!visibleBusEvents.length && <div className="empty-note">No relay bus events in this session yet.</div>}
           </div>
         </section>
 
