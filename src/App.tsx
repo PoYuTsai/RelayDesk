@@ -383,6 +383,20 @@ const accessOptionsByRunner: Record<string, Array<{ label: string; value: string
 
 const bothModelOptions = [{ label: "Each agent", value: "" }];
 const bothAccessOptions = [{ label: "Each agent", value: "" }];
+const aiRoomAvatar = {
+  src: "/assets/agents/ai-room.svg",
+  alt: "AI Room"
+};
+const agentAvatars: Record<string, { src: string; alt: string }> = {
+  "claude-code": {
+    src: "/assets/agents/claude-code.svg",
+    alt: "Claude Code"
+  },
+  "codex-cli": {
+    src: "/assets/agents/codex.svg",
+    alt: "Codex"
+  }
+};
 
 const slashCommandPresets: SlashCommandPreset[] = [
   { id: "help", label: "/help", command: "/help", hint: "Show commands available in the selected CLI", risk: "safe", captureDelayMs: 650 },
@@ -1506,6 +1520,11 @@ function shortRunnerName(name: string) {
 function runnerComposerName(runner: Runner | undefined) {
   if (!runner) return "";
   return runner.id === "claude-code" ? "Claude Code" : runner.id === "codex-cli" ? "Codex" : shortRunnerName(runner.name);
+}
+
+function runnerAvatar(runner: Runner | undefined) {
+  if (!runner) return aiRoomAvatar;
+  return agentAvatars[runner.id] || aiRoomAvatar;
 }
 
 function findConfigRunner(project: ConfigProject | undefined, runner: Runner) {
@@ -3892,6 +3911,7 @@ export function App() {
     ? ""
     : runnerConfiguredAccessValue(selectedRunnerForComposer, selectedConfigRunnerForComposer);
   const composerSettingsDisabled = composerTargetIsBoth || !selectedRunnerForComposer || !!configBusy;
+  const composerAvatar = composerTargetIsBoth ? aiRoomAvatar : runnerAvatar(selectedRunnerForComposer);
   const composerSlashBlocked = composerTargetIsBoth && consoleInput.trim().startsWith("/");
   const composerCanSend = composerTargetReady && !composerSlashBlocked;
   const selectedConsoleOutput =
@@ -4009,9 +4029,13 @@ export function App() {
               const configRunner = findConfigRunner(activeConfigProject, runner);
               const livePane = runnerPaneOutputs[runner.id]?.output || runner.lastOutput || "";
               const remote = runnerRemoteStatus(runner, configRunner, livePane, lang);
+              const avatar = runnerAvatar(runner);
               return (
                 <div className="runner-mini" key={`focus-runner-${runner.id}`}>
-                  <RunnerDot state={runner.state} />
+                  <span className="runner-mini-avatar-wrap">
+                    <img className="runner-mini-avatar" src={avatar.src} alt="" aria-hidden="true" />
+                    <RunnerDot state={runner.state} />
+                  </span>
                   <span>{runner.session}</span>
                   <span className="runner-mini-meta">
                     {remote && <small className={cx("remote-badge", remote.status)}>{remote.label}</small>}
@@ -4093,6 +4117,7 @@ export function App() {
             const row = usageByRunner.get(runner.id);
             const isSelected = composerTargetIsBoth || selectedRunnerForComposer?.id === runner.id;
             const isWriter = writerRunner?.id === runner.id;
+            const avatar = runnerAvatar(runner);
             const configRunner = findConfigRunner(activeConfigProject, runner);
             const startSummary = runnerStartSummary(configRunner);
             const runnerConsoleOutput = consoleOutputRunnerId === runner.id ? consoleOutput : "";
@@ -4108,10 +4133,13 @@ export function App() {
                 onClick={() => setCommandRunnerId(runner.id)}
               >
                 <div className="focus-agent-head">
-                  <div>
-                    <strong>{shortRunnerName(runner.name)}</strong>
-                    <span>{runner.session}</span>
-                    {startSummary && <small>{startSummary}</small>}
+                  <div className="agent-title-row">
+                    <img className="agent-avatar" src={avatar.src} alt="" aria-hidden="true" />
+                    <div>
+                      <strong>{shortRunnerName(runner.name)}</strong>
+                      <span>{runner.session}</span>
+                      {startSummary && <small>{startSummary}</small>}
+                    </div>
                   </div>
                   <div>
                     {isWriter && <em>{ui.trust.writer}</em>}
@@ -4206,14 +4234,17 @@ export function App() {
         </section>
 
         <section className="focus-composer">
-          <select value={composerTargetIsBoth ? BOTH_RUNNERS_ID : selectedRunnerForComposer?.id || ""} disabled={!runners.length} onChange={(event) => setCommandRunnerId(event.target.value)}>
-            {focusRunners.length > 1 && <option value={BOTH_RUNNERS_ID}>Both</option>}
-            {runners.map((runner) => (
-              <option value={runner.id} key={`focus-compose-${runner.id}`}>
-                {runnerComposerName(runner)}
-              </option>
-            ))}
-          </select>
+          <div className="composer-target-select">
+            <img className="composer-target-avatar" src={composerAvatar.src} alt={composerAvatar.alt} />
+            <select value={composerTargetIsBoth ? BOTH_RUNNERS_ID : selectedRunnerForComposer?.id || ""} disabled={!runners.length} onChange={(event) => setCommandRunnerId(event.target.value)}>
+              {focusRunners.length > 1 && <option value={BOTH_RUNNERS_ID}>Both</option>}
+              {runners.map((runner) => (
+                <option value={runner.id} key={`focus-compose-${runner.id}`}>
+                  {runnerComposerName(runner)}
+                </option>
+              ))}
+            </select>
+          </div>
           <div className="composer-input-wrap">
             {showSlashMenu && (
               <div className="slash-suggest-menu">
