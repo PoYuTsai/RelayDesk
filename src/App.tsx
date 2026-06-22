@@ -381,6 +381,503 @@ const busEventCopy: Record<RelayBusEventKind, { label: string; icon: "send" | "c
   snapshot: { label: "Snapshot", icon: "file" }
 };
 
+const uiCopy: Record<
+  Lang,
+  {
+    brandSubtitle: string;
+    sidebar: {
+      projects: string;
+      runnerHealth: string;
+      runnerCount: (count: number) => string;
+      noRunners: string;
+      loadingRunners: string;
+      writerPolicy: string;
+      writerPolicyDetail: string;
+    };
+    workspace: {
+      label: string;
+      gitClean: string;
+      dirty: string;
+      unknownBranch: string;
+    };
+    trust: {
+      label: string;
+      title: string;
+      detail: string;
+      activeWriter: string;
+      noRunners: string;
+      diskVerify: string;
+      loadingDisk: string;
+      noDiskChanges: string;
+      dirtyFiles: (count: number | string) => string;
+      waitingGit: string;
+      claimsNeedReview: string;
+      reviewDisk: string;
+      writer: string;
+      sends: string;
+      captures: string;
+      snapshots: string;
+      noActivity: string;
+    };
+    session: {
+      label: string;
+      noWriter: string;
+      saved: string;
+      noSaved: string;
+      archived: string;
+      sessions: string;
+      openDecisions: string;
+      evidence: string;
+      new: string;
+      archive: string;
+      delete: string;
+      copyBrief: string;
+      copied: string;
+    };
+    steps: Record<string, string>;
+    task: {
+      label: string;
+      title: string;
+      refresh: string;
+      builderDetail: string;
+      reviewerDetail: string;
+      planMode: string;
+      reviewMode: string;
+    };
+    consensus: {
+      label: string;
+      title: string;
+      agreement: string;
+      agreementDetail: string;
+      missingEvidence: string;
+      missingEvidenceDetail: string;
+      nextMove: string;
+      nextMoveDetail: string;
+    };
+    console: {
+      label: string;
+      title: string;
+      capturePane: string;
+      autoRefresh: (on: boolean) => string;
+      open: string;
+      start: string;
+      snapshot: string;
+      noRunner: string;
+      lastRead: (time: string) => string;
+      noRead: string;
+      empty: string;
+      placeholder: string;
+      send: string;
+    };
+    bus: {
+      label: string;
+      title: string;
+      events: string;
+      pending: string;
+      ack: string;
+      consensus: string;
+      empty: string;
+      localEvent: string;
+    };
+    decision: {
+      label: string;
+      title: string;
+      addPlaceholder: string;
+      add: string;
+      source: string;
+      reviewer: string;
+      manual: string;
+      chooseReviewer: string;
+      to: string;
+      reviewNotSent: string;
+      reviewAt: (time: string) => string;
+      captureWaiting: string;
+      captureAt: (time: string) => string;
+      returnPending: string;
+      returnAt: (time: string) => string;
+      notePlaceholder: string;
+      crossAgentReply: string;
+      askReviewer: string;
+      returnVerdict: string;
+      copy: string;
+      copied: string;
+      replyPlaceholder: string;
+      sendReview: string;
+      captureReviewer: string;
+      returnSource: string;
+    };
+    evidence: {
+      label: string;
+      title: string;
+      addFiles: string;
+      localEvidence: string;
+      buildReview: string;
+      previewUnavailable: string;
+      snapshotRelay: string;
+      chooseReviewer: string;
+      notePlaceholder: string;
+      sendReview: string;
+      retake: string;
+      browserLocal: string;
+    };
+    ops: {
+      gitReview: string;
+      diffState: string;
+      status: string;
+      diffStat: string;
+      clean: string;
+      noDiff: string;
+      advanced: string;
+      projectOnboarding: string;
+      rulesCapabilities: string;
+      projectOnboardingEmpty: string;
+      agentBriefCopied: string;
+      runnerProfiles: string;
+      projectContext: string;
+      localCapabilities: string;
+      localCapabilitiesEmpty: string;
+      projectManager: string;
+      projectSessions: string;
+      readiness: string;
+      doctorChecks: string;
+      usage: string;
+      localRelayTraffic: string;
+      runnerOps: string;
+      tmuxControls: string;
+      expand: string;
+    };
+  }
+> = {
+  en: {
+    brandSubtitle: "Local agent cockpit",
+    sidebar: {
+      projects: "Projects",
+      runnerHealth: "Runner Health",
+      runnerCount: (count) => `${count} runner${count === 1 ? "" : "s"}`,
+      noRunners: "No runners configured.",
+      loadingRunners: "Loading runners...",
+      writerPolicy: "Single writer policy",
+      writerPolicyDetail: "Only one agent should hold write permission during Build."
+    },
+    workspace: {
+      label: "Workspace",
+      gitClean: "git clean",
+      dirty: "dirty worktree",
+      unknownBranch: "unknown"
+    },
+    trust: {
+      label: "Agent Trust Bar",
+      title: "Verify agent claims against disk",
+      detail: "Choose the active writer, then compare every agent claim with git and local runner activity.",
+      activeWriter: "Active writer",
+      noRunners: "No runners",
+      diskVerify: "Disk verify",
+      loadingDisk: "Loading disk state",
+      noDiskChanges: "No disk changes",
+      dirtyFiles: (count) => `${count} file${count === 1 ? "" : "s"} changed`,
+      waitingGit: "Waiting for git context.",
+      claimsNeedReview: "Claims still need review before merge.",
+      reviewDisk: "Review git status before trusting agent output.",
+      writer: "writer",
+      sends: "sends",
+      captures: "captures",
+      snapshots: "snapshots",
+      noActivity: "No local activity yet"
+    },
+    session: {
+      label: "Session",
+      noWriter: "No writer",
+      saved: "saved",
+      noSaved: "No saved sessions",
+      archived: "archived",
+      sessions: "sessions",
+      openDecisions: "open decisions",
+      evidence: "evidence",
+      new: "New",
+      archive: "Archive",
+      delete: "Delete",
+      copyBrief: "Copy brief",
+      copied: "Copied"
+    },
+    steps: { Discuss: "Discuss", Synthesize: "Synthesize", Build: "Build", Review: "Review", Verify: "Verify" },
+    task: {
+      label: "Current Task",
+      title: "Opener screenshot upload failure",
+      refresh: "Refresh",
+      builderDetail: "Builder for product flow, UI, and first-line dogfood fixes.",
+      reviewerDetail: "Reviewer for git diff, risk zones, and root-cause checks.",
+      planMode: "Plan",
+      reviewMode: "Review"
+    },
+    consensus: {
+      label: "Consensus",
+      title: "Decision Ledger",
+      agreement: "Agreement",
+      agreementDetail: "Start with image picker permission, compressed file path, and opener request boundary.",
+      missingEvidence: "Missing Evidence",
+      missingEvidenceDetail: "Need device log and failing screenshot/video before changing quota or OCR code.",
+      nextMove: "Next Move",
+      nextMoveDetail: "Run Discuss, then assign one builder. Reviewer reads git diff after targeted fix."
+    },
+    console: {
+      label: "Session Console",
+      title: "Live tmux pane",
+      capturePane: "Capture Pane",
+      autoRefresh: (on) => `Auto refresh ${on ? "on" : "off"}`,
+      open: "Open",
+      start: "Start",
+      snapshot: "Snapshot",
+      noRunner: "No runner",
+      lastRead: (time) => `Last pane read ${time}`,
+      noRead: "No pane read yet",
+      empty: "Live tmux output appears here.",
+      placeholder: "Type a task, decision reply, /help, /clear, /compact...",
+      send: "Send"
+    },
+    bus: {
+      label: "Relay Bus",
+      title: "Two-way protocol",
+      events: "events",
+      pending: "pending",
+      ack: "ACK",
+      consensus: "consensus",
+      empty: "No relay bus events in this session yet.",
+      localEvent: "local event"
+    },
+    decision: {
+      label: "Decision Inbox",
+      title: "Open calls",
+      addPlaceholder: "Add a question or decision...",
+      add: "Add",
+      source: "Source",
+      reviewer: "Reviewer",
+      manual: "Manual / unknown",
+      chooseReviewer: "Choose reviewer",
+      to: "to",
+      reviewNotSent: "review not sent",
+      reviewAt: (time) => `review ${time}`,
+      captureWaiting: "capture waiting",
+      captureAt: (time) => `capture ${time}`,
+      returnPending: "return pending",
+      returnAt: (time) => `return ${time}`,
+      notePlaceholder: "Decision context or reviewer verdict...",
+      crossAgentReply: "Cross-agent reply",
+      askReviewer: "Ask reviewer",
+      returnVerdict: "Return verdict",
+      copy: "Copy",
+      copied: "Copied",
+      replyPlaceholder: "Paste or build the exact reply you want to send to the other agent...",
+      sendReview: "Send review",
+      captureReviewer: "Capture reviewer",
+      returnSource: "Return source"
+    },
+    evidence: {
+      label: "Evidence",
+      title: "Bug material attached to this task",
+      addFiles: "Add files",
+      localEvidence: "Local evidence",
+      buildReview: "Build review",
+      previewUnavailable: "Preview is not available for this evidence type.",
+      snapshotRelay: "Snapshot relay",
+      chooseReviewer: "Choose reviewer",
+      notePlaceholder: "Paste OCR, visible error text, or the exact detail the other agent should verify...",
+      sendReview: "Send review",
+      retake: "Retake",
+      browserLocal: "Browser-local file. Add OCR/context before sending if the reviewer cannot inspect it directly."
+    },
+    ops: {
+      gitReview: "Git Review",
+      diffState: "Diff state",
+      status: "Status",
+      diffStat: "Diff stat",
+      clean: "clean",
+      noDiff: "no unstaged diff",
+      advanced: "Advanced",
+      projectOnboarding: "Project Onboarding",
+      rulesCapabilities: "Rules & capabilities",
+      projectOnboardingEmpty: "Refresh to scan project rules, MCP, skills, prompts, plugins, and runner profiles.",
+      agentBriefCopied: "Agent brief copied.",
+      runnerProfiles: "Runner profiles",
+      projectContext: "Project context",
+      localCapabilities: "Local MCP / skills / plugins / prompts",
+      localCapabilitiesEmpty: "No local MCP, skills, commands, plugins, or prompts detected yet.",
+      projectManager: "Project Manager",
+      projectSessions: "Projects & sessions",
+      readiness: "Readiness",
+      doctorChecks: "Doctor checks",
+      usage: "Usage / Activity",
+      localRelayTraffic: "Local relay traffic",
+      runnerOps: "Runner Ops",
+      tmuxControls: "tmux controls",
+      expand: "Open"
+    }
+  },
+  "zh-TW": {
+    brandSubtitle: "本機 agent 工作台",
+    sidebar: {
+      projects: "專案",
+      runnerHealth: "Runner 狀態",
+      runnerCount: (count) => `${count} 個 runner`,
+      noRunners: "尚未設定 runner。",
+      loadingRunners: "載入 runner 中...",
+      writerPolicy: "單一寫入者",
+      writerPolicyDetail: "Build 階段只讓一個 agent 擁有寫入權。"
+    },
+    workspace: {
+      label: "工作區",
+      gitClean: "git 乾淨",
+      dirty: "有未提交變更",
+      unknownBranch: "未知"
+    },
+    trust: {
+      label: "信任檢查",
+      title: "先驗證，再相信 agent 結論",
+      detail: "指定本輪寫入者，並用 git 與本機 runner 活動核對 agent 說法。",
+      activeWriter: "本輪寫入者",
+      noRunners: "沒有 runner",
+      diskVerify: "磁碟狀態",
+      loadingDisk: "讀取 git 狀態中",
+      noDiskChanges: "沒有檔案變更",
+      dirtyFiles: (count) => `${count} 個檔案有變更`,
+      waitingGit: "等待 git 狀態。",
+      claimsNeedReview: "合併前仍需 review agent 結論。",
+      reviewDisk: "相信 agent 前，先看 git status。",
+      writer: "寫入者",
+      sends: "送出",
+      captures: "擷取",
+      snapshots: "截圖",
+      noActivity: "尚無本機活動"
+    },
+    session: {
+      label: "工作 session",
+      noWriter: "未指定寫入者",
+      saved: "已儲存",
+      noSaved: "尚無已存 session",
+      archived: "封存",
+      sessions: "sessions",
+      openDecisions: "待決策",
+      evidence: "證據",
+      new: "新增",
+      archive: "封存",
+      delete: "刪除",
+      copyBrief: "複製摘要",
+      copied: "已複製"
+    },
+    steps: { Discuss: "討論", Synthesize: "收斂", Build: "實作", Review: "Review", Verify: "驗證" },
+    task: {
+      label: "目前任務",
+      title: "Opener 截圖上傳失敗",
+      refresh: "刷新",
+      builderDetail: "負責產品流程、UI 與第一線 dogfood 修正。",
+      reviewerDetail: "負責 diff review、風險區與 root cause 檢查。",
+      planMode: "規劃",
+      reviewMode: "Review"
+    },
+    consensus: {
+      label: "收斂結果",
+      title: "決策紀錄",
+      agreement: "共識",
+      agreementDetail: "先檢查 image picker permission、壓縮檔路徑與 opener request 邊界。",
+      missingEvidence: "缺少證據",
+      missingEvidenceDetail: "改 quota 或 OCR 前，需要 device log 與失敗截圖/影片。",
+      nextMove: "下一步",
+      nextMoveDetail: "先討論，再指定一位 builder；targeted fix 後由 reviewer 看 git diff。"
+    },
+    console: {
+      label: "Session Console",
+      title: "Live tmux 視窗",
+      capturePane: "擷取畫面",
+      autoRefresh: (on) => `自動刷新 ${on ? "開" : "關"}`,
+      open: "打開",
+      start: "啟動",
+      snapshot: "截圖",
+      noRunner: "沒有 runner",
+      lastRead: (time) => `上次讀取 ${time}`,
+      noRead: "尚未讀取 tmux",
+      empty: "Live tmux 輸出會顯示在這裡。",
+      placeholder: "輸入 task、決策回覆、/help、/clear、/compact...",
+      send: "送出"
+    },
+    bus: {
+      label: "Relay Bus",
+      title: "雙向協作紀錄",
+      events: "事件",
+      pending: "待處理",
+      ack: "ACK",
+      consensus: "共識",
+      empty: "這個 session 尚無 relay bus 事件。",
+      localEvent: "本機事件"
+    },
+    decision: {
+      label: "Decision Inbox",
+      title: "待決策",
+      addPlaceholder: "新增問題或決策...",
+      add: "新增",
+      source: "來源",
+      reviewer: "Reviewer",
+      manual: "手動 / 未知",
+      chooseReviewer: "選擇 reviewer",
+      to: "給",
+      reviewNotSent: "尚未送 review",
+      reviewAt: (time) => `review ${time}`,
+      captureWaiting: "等待擷取",
+      captureAt: (time) => `擷取 ${time}`,
+      returnPending: "尚未回傳",
+      returnAt: (time) => `回傳 ${time}`,
+      notePlaceholder: "決策背景或 reviewer verdict...",
+      crossAgentReply: "跨 agent 回覆",
+      askReviewer: "問 reviewer",
+      returnVerdict: "回傳 verdict",
+      copy: "複製",
+      copied: "已複製",
+      replyPlaceholder: "貼上或產生要送給另一個 agent 的精準回覆...",
+      sendReview: "送 review",
+      captureReviewer: "擷取 reviewer",
+      returnSource: "回來源"
+    },
+    evidence: {
+      label: "證據",
+      title: "這個任務的截圖、影片與 log",
+      addFiles: "加入檔案",
+      localEvidence: "本機證據",
+      buildReview: "建立 review",
+      previewUnavailable: "這類證據無法預覽。",
+      snapshotRelay: "截圖 relay",
+      chooseReviewer: "選擇 reviewer",
+      notePlaceholder: "貼上 OCR、畫面錯誤文字，或另一個 agent 需要確認的細節...",
+      sendReview: "送 review",
+      retake: "重截",
+      browserLocal: "瀏覽器本機檔案。若 reviewer 無法直接讀取，請補 OCR/context。"
+    },
+    ops: {
+      gitReview: "Git 檢查",
+      diffState: "Diff 狀態",
+      status: "狀態",
+      diffStat: "Diff 統計",
+      clean: "乾淨",
+      noDiff: "沒有 unstaged diff",
+      advanced: "進階工具",
+      projectOnboarding: "Project Onboarding",
+      rulesCapabilities: "規則與能力",
+      projectOnboardingEmpty: "刷新後會掃描專案 rules、MCP、skills、prompts、plugins 與 runner profile。",
+      agentBriefCopied: "Agent brief 已複製。",
+      runnerProfiles: "Runner profiles",
+      projectContext: "專案 context",
+      localCapabilities: "本機 MCP / skills / plugins / prompts",
+      localCapabilitiesEmpty: "尚未偵測到本機 MCP、skills、commands、plugins 或 prompts。",
+      projectManager: "專案管理",
+      projectSessions: "專案與 sessions",
+      readiness: "環境檢查",
+      doctorChecks: "Doctor checks",
+      usage: "使用量 / 活動",
+      localRelayTraffic: "本機 relay 活動",
+      runnerOps: "Runner 控制",
+      tmuxControls: "tmux controls",
+      expand: "展開"
+    }
+  }
+};
+
 function compactSummary(value: string, max = 180) {
   const cleaned = value.replace(/\s+/g, " ").trim();
   if (cleaned.length <= max) return cleaned;
@@ -1174,6 +1671,7 @@ export function App() {
   }, [doctor]);
 
   const setup = cleanSetupCopy[lang];
+  const ui = uiCopy[lang];
 
   const recommendedRunnerMode = useMemo<RunnerMode>(() => (doctor?.platform === "win32" ? "wsl" : "native"), [doctor?.platform]);
 
@@ -2755,6 +3253,398 @@ export function App() {
   if (bootError) return <div className="loading-shell error">{bootError}</div>;
   if (!projects.length) return <AppShellSkeleton />;
 
+  const focusRunners = runners.slice(0, 2);
+  const showFocusConsole = activeStep === "Build";
+  const showFocusBus = activeStep === "Synthesize" || activeStep === "Review";
+  const showFocusEvidence = activeStep === "Review" || activeStep === "Verify";
+  const selectedRunnerForComposer = commandRunner || focusRunners[0];
+
+  return (
+    <main className="focus-shell">
+      <aside className="focus-sidebar">
+        <div className="brand focus-brand">
+          <div className="brand-mark">
+            <Workflow size={18} />
+          </div>
+          <div>
+            <strong>RelayDesk</strong>
+            <span>{ui.brandSubtitle}</span>
+          </div>
+        </div>
+
+        <section className="focus-side-block">
+          <div className="section-label">{ui.sidebar.projects}</div>
+          <div className="project-list">
+            {projects.map((project) => (
+              <button
+                key={project.id}
+                className={cx("project-row", project.id === activeProject?.id && "active")}
+                onClick={() => setProjectId(project.id)}
+              >
+                <FolderGit2 size={16} />
+                <span>
+                  <strong>{project.name}</strong>
+                  <small>{ui.sidebar.runnerCount(project.runnerCount)}</small>
+                </span>
+              </button>
+            ))}
+          </div>
+        </section>
+
+        <section className="focus-side-block focus-session-list">
+          <div className="section-label">{ui.session.label}</div>
+          <select
+            value={activeSessionId}
+            disabled={!visibleSessions.length || !!sessionBusy}
+            onChange={(event) => void selectSession(event.target.value)}
+          >
+            {!visibleSessions.length && <option value="">{ui.session.noSaved}</option>}
+            {visibleSessions.map((session) => (
+              <option value={session.id} key={`focus-session-${session.id}`}>
+                {session.status === "archived" ? `[${ui.session.archived}] ` : ""}
+                {session.title}
+              </option>
+            ))}
+          </select>
+          <div className="focus-session-actions">
+            <button disabled={!!sessionBusy} onClick={() => void createSession()}>
+              <Plus size={13} />
+              {ui.session.new}
+            </button>
+            <button disabled={!!sessionBusy} onClick={() => void copySessionBrief()}>
+              <Copy size={13} />
+              {copiedSessionBrief ? ui.session.copied : ui.session.copyBrief}
+            </button>
+          </div>
+        </section>
+
+        <section className="focus-side-block">
+          <div className="section-label">{ui.sidebar.runnerHealth}</div>
+          {runners.length ? (
+            runners.map((runner) => (
+              <div className="runner-mini" key={`focus-runner-${runner.id}`}>
+                <RunnerDot state={runner.state} />
+                <span>{runner.session}</span>
+                <small>{runner.state}</small>
+              </div>
+            ))
+          ) : (
+            <div className="empty-note">{activeProject?.runnerCount ? ui.sidebar.loadingRunners : ui.sidebar.noRunners}</div>
+          )}
+        </section>
+
+        <section className="focus-side-block risk-box">
+          <ShieldCheck size={16} />
+          <div>
+            <strong>{ui.sidebar.writerPolicy}</strong>
+            <p>{ui.sidebar.writerPolicyDetail}</p>
+          </div>
+        </section>
+      </aside>
+
+      <section className="focus-main">
+        <header className="focus-topbar">
+          <div>
+            <div className="eyeline">{ui.workspace.label}</div>
+            <h1>{activeProject?.name}</h1>
+          </div>
+          <div className="status-cluster">
+            <span className={cx("status-pill", git?.clean ? "safe" : "warn")}>
+              {git?.clean ? ui.workspace.gitClean : ui.workspace.dirty}
+            </span>
+            <span className="status-pill">
+              <GitBranch size={13} />
+              {git?.branch || ui.workspace.unknownBranch}
+            </span>
+            <div className="language-switch" aria-label="Language">
+              <button className={cx(lang === "en" && "active")} onClick={() => setLang("en")}>
+                <Globe2 size={12} />
+                EN
+              </button>
+              <button className={cx(lang === "zh-TW" && "active")} onClick={() => setLang("zh-TW")}>
+                繁中
+              </button>
+            </div>
+          </div>
+        </header>
+
+        <nav className="focus-stepper" aria-label="Workflow">
+          {steps.map((step, index) => (
+            <button
+              key={`focus-step-${step}`}
+              className={cx("step", step === activeStep && "active", steps.indexOf(activeStep) > index && "done")}
+              onClick={() => setActiveStep(step)}
+            >
+              <span>{index + 1}</span>
+              {ui.steps[step]}
+            </button>
+          ))}
+        </nav>
+
+        <section className="focus-card focus-task-card">
+          <div className="panel-head">
+            <div>
+              <div className="section-label">{ui.task.label}</div>
+              <h2>{activeSession?.title || ui.task.title}</h2>
+            </div>
+            <button className="ghost-button" onClick={() => void refresh()}>
+              <RefreshCcw size={14} />
+              {ui.task.refresh}
+            </button>
+          </div>
+          <textarea value={task} onChange={(event) => setTask(event.target.value)} />
+        </section>
+
+        <section className="focus-duo-grid">
+          {focusRunners.map((runner) => {
+            const row = usageByRunner.get(runner.id);
+            const isSelected = selectedRunnerForComposer?.id === runner.id;
+            const isWriter = writerRunner?.id === runner.id;
+            return (
+              <article className={cx("focus-agent-pane", isSelected && "selected", isWriter && "writer")} key={`focus-agent-${runner.id}`}>
+                <div className="focus-agent-head">
+                  <div>
+                    <strong>{shortRunnerName(runner.name)}</strong>
+                    <span>{runner.session}</span>
+                  </div>
+                  <div>
+                    {isWriter && <em>{ui.trust.writer}</em>}
+                    <RunnerDot state={runner.state} />
+                  </div>
+                </div>
+                <div className="focus-agent-output">
+                  {isSelected ? consoleOutput || ui.console.empty : row ? `${row.lastAction || "idle"} · ${formatTime(row.lastAt)}` : ui.trust.noActivity}
+                </div>
+                <div className="focus-agent-actions">
+                  <button disabled={!!busyRunner || runner.state === "running"} onClick={() => void runRunner(runner, "start")}>
+                    <Play size={13} />
+                    {ui.console.start}
+                  </button>
+                  <button
+                    disabled={!!busyRunner || runner.state !== "running"}
+                    onClick={() => {
+                      setCommandRunnerId(runner.id);
+                      void captureConsole(runner, { mode: "capture" });
+                    }}
+                  >
+                    <FileDiff size={13} />
+                    {ui.console.capturePane}
+                  </button>
+                  <button disabled={!!busyRunner} onClick={() => void snapshotRunner(runner)}>
+                    <Camera size={13} />
+                    {ui.console.snapshot}
+                  </button>
+                  <button disabled={!!busyRunner || runner.state !== "running"} onClick={() => void runRunner(runner, "open")}>
+                    <Terminal size={13} />
+                    {ui.console.open}
+                  </button>
+                </div>
+              </article>
+            );
+          })}
+          {!focusRunners.length && <div className="empty-note">{activeProject?.runnerCount ? ui.sidebar.loadingRunners : ui.sidebar.noRunners}</div>}
+        </section>
+
+        <section className="focus-composer">
+          <select value={selectedRunnerForComposer?.id || ""} disabled={!runners.length} onChange={(event) => setCommandRunnerId(event.target.value)}>
+            {runners.map((runner) => (
+              <option value={runner.id} key={`focus-compose-${runner.id}`}>
+                {runner.session}
+              </option>
+            ))}
+          </select>
+          <input
+            value={consoleInput}
+            onChange={(event) => setConsoleInput(event.target.value)}
+            onKeyDown={(event) => {
+              if (event.key === "Enter") {
+                event.preventDefault();
+                void sendConsoleInput();
+              }
+            }}
+            placeholder={ui.console.placeholder}
+          />
+          <button disabled={!!busyRunner || selectedRunnerForComposer?.state !== "running" || !consoleInput.trim()} onClick={() => void sendConsoleInput()}>
+            <Send size={13} />
+            {ui.console.send}
+          </button>
+        </section>
+
+        {showFocusConsole && (
+          <section className="focus-card focus-console-card">
+            <div className="panel-head">
+              <div>
+                <div className="section-label">{ui.console.label}</div>
+                <h2>{ui.console.title}</h2>
+              </div>
+              <button
+                className={cx("ghost-button", consoleAutoRefresh && "active")}
+                disabled={!selectedRunnerForComposer || selectedRunnerForComposer.state !== "running"}
+                onClick={() => setConsoleAutoRefresh((current) => !current)}
+              >
+                <RefreshCcw size={13} />
+                {ui.console.autoRefresh(consoleAutoRefresh)}
+              </button>
+            </div>
+            <pre className="focus-console-output">{consoleOutput || ui.console.empty}</pre>
+          </section>
+        )}
+
+        {showFocusBus && (
+          <section className="focus-card focus-bus-card">
+            <div className="panel-head">
+              <div>
+                <div className="section-label">{ui.bus.label}</div>
+                <h2>{ui.bus.title}</h2>
+              </div>
+              <div className="bus-stats compact">
+                <span>
+                  <strong>{busCounts.total}</strong>
+                  {ui.bus.events}
+                </span>
+                <span>
+                  <strong>{busCounts.pending}</strong>
+                  {ui.bus.pending}
+                </span>
+              </div>
+            </div>
+            <div className="focus-mini-list">
+              {visibleBusEvents.slice(0, 4).map((event) => (
+                <article className={cx("bus-event", event.kind, event.status)} key={`focus-bus-${event.id}`}>
+                  <strong>{event.title}</strong>
+                  <p>{event.summary}</p>
+                </article>
+              ))}
+              {!visibleBusEvents.length && <div className="empty-note">{ui.bus.empty}</div>}
+            </div>
+          </section>
+        )}
+      </section>
+
+      <aside className="focus-inspector">
+        <section className="focus-card focus-status-card">
+          <div className="panel-head">
+            <div>
+              <div className="section-label">{ui.ops.gitReview}</div>
+              <h2>{ui.ops.diffState}</h2>
+            </div>
+            {git?.clean ? <CheckCircle2 className="ok" size={18} /> : <FileDiff className="warn-icon" size={18} />}
+          </div>
+          <div className="focus-status-grid">
+            <div>
+              <span>{ui.ops.status}</span>
+              <strong>{git?.clean ? ui.ops.clean : ui.workspace.dirty}</strong>
+            </div>
+            <div>
+              <span>{ui.ops.doctorChecks}</span>
+              <strong>{doctor ? `${doctor.summary.ok} ok / ${doctor.summary.fail} fail` : "..."}</strong>
+            </div>
+          </div>
+        </section>
+
+        <section className="focus-card focus-decision-card">
+          <div className="panel-head">
+            <div>
+              <div className="section-label">{ui.decision.label}</div>
+              <h2>{ui.decision.title}</h2>
+            </div>
+            <span className="status-pill">{decisionCounts.open}</span>
+          </div>
+          <div className="decision-compose focus-decision-compose">
+            <input
+              value={decisionDraft}
+              onChange={(event) => setDecisionDraft(event.target.value)}
+              placeholder={ui.decision.addPlaceholder}
+              onKeyDown={(event) => {
+                if (event.key === "Enter") addDecision();
+              }}
+            />
+            <button disabled={!decisionDraft.trim()} onClick={addDecision}>
+              <Plus size={14} />
+            </button>
+          </div>
+          <div className="focus-mini-list">
+            {decisions.slice(0, 3).map((decision) => (
+              <article className="focus-decision-item" key={`focus-decision-${decision.id}`}>
+                <strong>{decision.title}</strong>
+                <p>{decision.prompt}</p>
+                <div className="decision-options compact">
+                  {decision.options.slice(0, 3).map((option) => (
+                    <button
+                      key={`focus-${decision.id}-${option}`}
+                      className={cx("decision-option", decision.selected === option && "active")}
+                      onClick={() => updateDecision(decision.id, { selected: option, replyDraft: "", status: "open" })}
+                    >
+                      {option}
+                    </button>
+                  ))}
+                </div>
+              </article>
+            ))}
+            {!decisions.length && <div className="empty-note">{ui.decision.addPlaceholder}</div>}
+          </div>
+        </section>
+
+        {showFocusEvidence && (
+          <section className="focus-card focus-evidence-card">
+            <div className="panel-head">
+              <div>
+                <div className="section-label">{ui.evidence.label}</div>
+                <h2>{ui.evidence.title}</h2>
+              </div>
+              <label className="upload-button">
+                <Upload size={14} />
+                {ui.evidence.addFiles}
+                <input type="file" multiple onChange={(event) => addEvidence(event.target.files)} />
+              </label>
+            </div>
+            <div className="focus-mini-list">
+              {evidence.slice(0, 4).map((item) => (
+                <button className={cx("evidence-card", selectedEvidence?.id === item.id && "active")} key={`focus-evidence-${item.id}`} onClick={() => setSelectedEvidenceId(item.id)}>
+                  <div className={cx("evidence-icon", item.kind)}>
+                    {item.kind === "image" ? <Image size={16} /> : item.kind === "video" ? <Play size={16} /> : <FileDiff size={16} />}
+                  </div>
+                  <div>
+                    <strong>{item.name}</strong>
+                    <span>{item.kind} · {item.size}</span>
+                  </div>
+                </button>
+              ))}
+            </div>
+          </section>
+        )}
+
+        <details className="focus-card focus-details">
+          <summary>
+            <span>
+              <strong>{ui.ops.advanced}</strong>
+              <small>{ui.ops.projectOnboarding} / Doctor / {ui.ops.runnerOps}</small>
+            </span>
+            <Settings2 size={16} />
+          </summary>
+          <div className="focus-details-list">
+            <div>
+              <strong>{ui.ops.projectOnboarding}</strong>
+              <span>
+                {projectOnboarding
+                  ? `${projectOnboarding.summary.ok} ok / ${projectOnboarding.summary.warn} warn / ${projectOnboarding.summary.fail} fail`
+                  : ui.ops.projectOnboardingEmpty}
+              </span>
+            </div>
+            <div>
+              <strong>{setup.title}</strong>
+              <span>{completedOnboardingSteps}/{onboardingSteps.length}</span>
+            </div>
+            <div>
+              <strong>{ui.ops.runnerOps}</strong>
+              <span>{runners.map((runner) => `${runner.session}: ${runner.state}`).join(" · ") || ui.sidebar.noRunners}</span>
+            </div>
+          </div>
+        </details>
+      </aside>
+    </main>
+  );
+
   return (
     <main className="app-shell">
       <aside className="sidebar">
@@ -2858,7 +3748,7 @@ export function App() {
               <strong>
                 {!git
                   ? "Loading disk state"
-                  : git.clean
+                  : git?.clean
                     ? "No disk changes"
                     : `${diskChangeCount || "Dirty"} file${diskChangeCount === 1 ? "" : "s"} changed`}
               </strong>
@@ -2866,7 +3756,7 @@ export function App() {
             <small>
               {!git
                 ? "Waiting for git context."
-                : git.clean
+                : git?.clean
                   ? "Claims still need review before merge."
                   : "Review git status before trusting agent output."}
             </small>
@@ -2959,7 +3849,7 @@ export function App() {
               <Plus size={13} />
               New
             </button>
-            <button disabled={!!sessionBusy || !activeSession || activeSession.status === "archived"} onClick={() => void archiveSession()}>
+            <button disabled={!!sessionBusy || !activeSession || activeSession?.status === "archived"} onClick={() => void archiveSession()}>
               <Archive size={13} />
               Archive
             </button>
@@ -3109,10 +3999,10 @@ export function App() {
           </div>
           {consoleSlashMeta ? (
             <div className="slash-command-advice">
-              <span className={cx("slash-risk", consoleSlashMeta.risk)}>{slashRiskCopy[consoleSlashMeta.risk].label}</span>
+              <span className={cx("slash-risk", consoleSlashMeta?.risk || "safe")}>{slashRiskCopy[consoleSlashMeta?.risk || "safe"].label}</span>
               {" "}
               <span>
-                {slashRiskCopy[consoleSlashMeta.risk].description} Auto-peek after {formatSlashDelay(consoleSlashMeta.captureDelayMs)}.
+                {slashRiskCopy[consoleSlashMeta?.risk || "safe"].description} Auto-peek after {formatSlashDelay(consoleSlashMeta?.captureDelayMs || 650)}.
               </span>
             </div>
           ) : null}
@@ -3599,7 +4489,7 @@ export function App() {
           </div>
           <p className="setup-subtitle">
             {projectOnboarding
-              ? `${projectOnboarding.projectName}: ${projectOnboarding.summary.ok} ok / ${projectOnboarding.summary.warn} warn / ${projectOnboarding.summary.fail} fail`
+              ? `${projectOnboarding?.projectName}: ${projectOnboarding?.summary.ok} ok / ${projectOnboarding?.summary.warn} warn / ${projectOnboarding?.summary.fail} fail`
               : "Refresh to scan project rules, MCP, skills, prompts, plugins, and runner profiles."}
           </p>
           {copiedSetup === "project-onboarding-brief" && <div className="inline-success">Agent brief copied.</div>}
