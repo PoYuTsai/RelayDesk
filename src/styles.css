@@ -1974,6 +1974,162 @@ h2 {
   font-size: 11px;
 }
 
+.icon-action {
+  display: inline-grid;
+  place-items: center;
+  width: 31px;
+  height: 31px;
+  color: var(--muted);
+  background: var(--panel-2);
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  cursor: pointer;
+}
+
+.icon-action:hover {
+  color: var(--text);
+  border-color: rgba(45, 212, 191, 0.36);
+}
+
+.inline-success {
+  margin-top: 10px;
+  padding: 8px 9px;
+  color: var(--ok);
+  background: rgba(16, 185, 129, 0.08);
+  border: 1px solid rgba(16, 185, 129, 0.18);
+  border-radius: 8px;
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.onboarding-check-grid,
+.runner-profile-list,
+.context-source-list,
+.local-capability-list {
+  display: grid;
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.onboarding-check,
+.context-source-row {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 8px;
+  min-width: 0;
+  padding: 9px;
+  background: var(--panel-2);
+  border: 1px solid var(--line-soft);
+  border-radius: 8px;
+}
+
+.onboarding-check > span,
+.context-source-row > span {
+  margin-top: 2px;
+}
+
+.onboarding-check.ok > span,
+.context-source-row.ok > span {
+  color: var(--ok);
+}
+
+.onboarding-check.warn > span,
+.context-source-row.warn > span {
+  color: var(--warn);
+}
+
+.onboarding-check.fail > span,
+.context-source-row.fail > span {
+  color: var(--danger);
+}
+
+.context-source-row.missing > span {
+  color: var(--faint);
+}
+
+.onboarding-check div,
+.context-source-row div {
+  min-width: 0;
+}
+
+.onboarding-check strong,
+.onboarding-check small,
+.context-source-row strong,
+.context-source-row small,
+.runner-profile strong,
+.runner-profile span,
+.runner-profile small,
+.runner-profile code,
+.local-capability-row strong,
+.local-capability-row small {
+  display: block;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.onboarding-check strong,
+.context-source-row strong,
+.runner-profile strong,
+.local-capability-row strong {
+  font-size: 12px;
+}
+
+.onboarding-check small,
+.context-source-row small,
+.runner-profile span,
+.runner-profile small,
+.local-capability-row small {
+  margin-top: 2px;
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.onboarding-section-title {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-top: 14px;
+  color: var(--faint);
+  font-size: 11px;
+  font-weight: 900;
+  text-transform: uppercase;
+}
+
+.onboarding-section-title em {
+  color: var(--muted);
+  font-style: normal;
+}
+
+.runner-profile,
+.local-capability-row {
+  min-width: 0;
+  padding: 10px;
+  background: #0d1015;
+  border: 1px solid var(--line-soft);
+  border-radius: 8px;
+}
+
+.runner-profile.ok {
+  border-color: rgba(16, 185, 129, 0.18);
+}
+
+.runner-profile.warn {
+  border-color: rgba(245, 158, 11, 0.24);
+}
+
+.runner-profile.fail {
+  border-color: rgba(239, 68, 68, 0.24);
+}
+
+.runner-profile code {
+  margin-top: 6px;
+  color: var(--faint);
+  font-size: 11px;
+}
+
 .setup-actions {
   display: grid;
   grid-template-columns: repeat(3, 1fr);

@@ -37,6 +37,53 @@ The current defaults target `Claude Opus 4.8 / Ultra Code` for Claude Code and
 `gpt-5.5` for Codex. The Doctor panel and Project Manager runner defaults read
 from the same preset file so the UI and backend do not drift.
 
+## Project Onboarding scan
+
+Project Onboarding is a read-only scan. It helps a user confirm whether
+RelayDesk can see the same local context their native agents already use.
+
+For the selected project, RelayDesk checks common project-level sources:
+
+- `AGENTS.md`
+- `CLAUDE.md`
+- `.github/copilot-instructions.md`
+- `.mcp.json`
+- `.claude/mcp.json`
+- `.claude/mcp_servers/`
+- `.claude/settings.json`
+- `.claude/commands/`
+- `.claude/skills/`
+- `.claude/agents/`
+- `.codex/config.toml`
+- `.codex/mcp.json`
+- `.codex/mcp_servers/`
+- `.codex/rules/`
+- `.codex/skills/`
+- `.codex/prompts/`
+- `.cursor/rules/`
+
+It also checks user-level agent homes on the host, and WSL homes when WSL is
+available:
+
+- `~/.claude/settings.json`
+- `~/.claude/mcp.json`
+- `~/.claude/mcp_servers/`
+- `~/.claude/skills/`
+- `~/.claude/commands/`
+- `~/.claude/agents/`
+- `~/.claude/plugins/`
+- `~/.codex/config.toml`
+- `~/.codex/mcp.json`
+- `~/.codex/mcp_servers/`
+- `~/.codex/skills/`
+- `~/.codex/plugins/`
+- `~/.codex/prompts/`
+
+The scan does not edit those files. It reports whether rules, MCP config,
+skills, plugins, prompts, commands, subagents, and runner profiles are visible
+enough for Claude Code and Codex CLI to behave like the user's existing local
+setup.
+
 ## Project shape
 
 ```json

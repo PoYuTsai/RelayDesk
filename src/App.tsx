@@ -145,6 +145,62 @@ type DoctorContext = {
   checks: DoctorCheck[];
 };
 
+type OnboardingStatus = DoctorCheck["status"] | "missing";
+
+type OnboardingSource = {
+  id: string;
+  label: string;
+  agent: "shared" | "claude" | "codex" | "custom";
+  kind: string;
+  relative: string;
+  path: string;
+  exists: boolean;
+  isDirectory: boolean;
+  size?: number;
+  entries?: string[];
+  preview?: string;
+  status: OnboardingStatus;
+  detail: string;
+};
+
+type OnboardingHome = {
+  agent: "claude" | "codex";
+  scope: string;
+  path: string;
+  exists: boolean;
+  items: OnboardingSource[];
+};
+
+type RunnerProfile = {
+  id: string;
+  name: string;
+  session: string;
+  agent: "claude" | "codex" | "custom";
+  mode: RunnerMode;
+  cwd: string;
+  startCommand: string;
+  status: DoctorCheck["status"];
+  detail: string;
+  contextSources: string[];
+};
+
+type ProjectOnboardingContext = {
+  projectId: string;
+  projectName: string;
+  path: string;
+  exists: boolean;
+  summary: {
+    ok: number;
+    warn: number;
+    fail: number;
+    total: number;
+  };
+  checks: DoctorCheck[];
+  contextSources: OnboardingSource[];
+  agentHomes: OnboardingHome[];
+  runnerProfiles: RunnerProfile[];
+};
+
 type UsageRunner = {
   key: string;
   projectId: string;
@@ -978,12 +1034,72 @@ function checkLabel(check?: DoctorCheck) {
   return "blocked";
 }
 
+function sourceStatusIcon(status: OnboardingStatus) {
+  return status === "ok" ? <CheckCircle2 size={14} /> : <AlertTriangle size={14} />;
+}
+
+function formatOnboardingSource(source: OnboardingSource) {
+  if (!source.exists) return source.detail || "Not found";
+  if (source.isDirectory) {
+    const entries = source.entries?.length ? `: ${source.entries.slice(0, 4).join(", ")}` : "";
+    return `${source.detail}${entries}`;
+  }
+  return source.preview || source.detail;
+}
+
+function buildOnboardingBrief(onboarding: ProjectOnboardingContext | null) {
+  if (!onboarding) return "Project onboarding has not been scanned yet.";
+  const checks = onboarding.checks.map((item) => `- ${item.status.toUpperCase()} ${item.label}: ${item.detail}`).join("\n");
+  const sources = onboarding.contextSources
+    .filter((source) => source.exists)
+    .map((source) => `- ${source.agent}/${source.kind}: ${source.relative}`)
+    .join("\n");
+  const mcpSources = [
+    ...onboarding.contextSources,
+    ...onboarding.agentHomes.flatMap((home) => home.items.map((item) => ({ ...item, agent: home.agent, relative: `${home.scope}:${item.relative}` })))
+  ]
+    .filter((source) => source.exists && source.kind === "mcp")
+    .map((source) => `- ${source.agent}: ${source.relative}`)
+    .join("\n");
+  const runners = onboarding.runnerProfiles
+    .map((runner) => `- ${runner.name} (${runner.agent}, ${runner.mode}, ${runner.session}): ${runner.detail}`)
+    .join("\n");
+  const homes = onboarding.agentHomes
+    .map((home) => {
+      const items = home.items.filter((item) => item.exists).map((item) => item.label).join(", ") || "none detected";
+      return `- ${home.agent} ${home.scope}: ${items}`;
+    })
+    .join("\n");
+  return [
+    `Project onboarding brief: ${onboarding.projectName}`,
+    `Path: ${onboarding.path}`,
+    "",
+    "Checks:",
+    checks || "- No checks available.",
+    "",
+    "Project context sources:",
+    sources || "- No project context sources detected.",
+    "",
+    "MCP sources:",
+    mcpSources || "- No project/user MCP config detected.",
+    "",
+    "Runner profiles:",
+    runners || "- No runner profiles configured.",
+    "",
+    "Local agent homes:",
+    homes || "- No local agent homes detected.",
+    "",
+    "Use this brief to align Claude Code and Codex CLI before proposing implementation or review steps."
+  ].join("\n");
+}
+
 export function App() {
   const [projects, setProjects] = useState<Project[]>([]);
   const [projectId, setProjectId] = useState("");
   const [config, setConfig] = useState<ConfigContext | null>(null);
   const [git, setGit] = useState<GitContext | null>(null);
   const [doctor, setDoctor] = useState<DoctorContext | null>(null);
+  const [projectOnboarding, setProjectOnboarding] = useState<ProjectOnboardingContext | null>(null);
   const [usage, setUsage] = useState<UsageContext | null>(null);
   const [runners, setRunners] = useState<Runner[]>([]);
   const [activeStep, setActiveStep] = useState("Discuss");
@@ -1292,6 +1408,25 @@ export function App() {
     ] satisfies Array<{ id: string; label: string; status: DoctorCheck["status"]; value: string; detail: string }>;
   }, [doctor?.agents?.claude?.selected, doctor?.agents?.codex?.pathDefault, doctor?.agents?.codex?.selected, doctorById]);
 
+  const onboardingContextSources = useMemo(() => {
+    const sources = projectOnboarding?.contextSources || [];
+    const importantMissing = new Set(["agents-md", "claude-md", "mcp-json", "claude-mcp-json", "codex-mcp-json", "codex-config", "claude-settings"]);
+    return sources.filter((source) => source.exists || importantMissing.has(source.id)).slice(0, 16);
+  }, [projectOnboarding?.contextSources]);
+
+  const onboardingLocalItems = useMemo(() => {
+    return (projectOnboarding?.agentHomes || [])
+      .flatMap((home) =>
+        home.items
+          .filter((item) => item.exists)
+          .map((item) => ({
+            ...item,
+            label: `${home.agent} ${home.scope}: ${item.label}`
+          }))
+      )
+      .slice(0, 12);
+  }, [projectOnboarding?.agentHomes]);
+
   const onboardingSteps = useMemo(() => {
     const projectPath = activeProject?.path || "";
     const projectCheck = activeProject ? doctorById.get(`project-${activeProject.id}`) : undefined;
@@ -1580,16 +1715,18 @@ export function App() {
 
   async function refresh(project = activeProject) {
     if (!project) return;
-    const [nextGit, nextRunners, nextDoctor, nextUsage, nextConfig] = await Promise.all([
+    const [nextGit, nextRunners, nextDoctor, nextOnboarding, nextUsage, nextConfig] = await Promise.all([
       getJson<GitContext>(`/api/git?projectId=${encodeURIComponent(project.id)}`),
       getJson<{ runners: Runner[] }>(`/api/runners?projectId=${encodeURIComponent(project.id)}`),
       getJson<DoctorContext>("/api/doctor"),
+      getJson<ProjectOnboardingContext>(`/api/onboarding?projectId=${encodeURIComponent(project.id)}`),
       getJson<UsageContext>("/api/usage"),
       getJson<ConfigContext>("/api/config")
     ]);
     setGit(nextGit);
     setRunners(nextRunners.runners);
     setDoctor(nextDoctor);
+    setProjectOnboarding(nextOnboarding);
     setUsage(nextUsage);
     setConfig(nextConfig);
   }
@@ -2516,6 +2653,16 @@ export function App() {
     }
   }
 
+  async function copyProjectOnboardingBrief() {
+    try {
+      await copyTextToClipboard(buildOnboardingBrief(projectOnboarding));
+      setCopiedSetup("project-onboarding-brief");
+      window.setTimeout(() => setCopiedSetup((current) => (current === "project-onboarding-brief" ? "" : current)), 1400);
+    } catch (error) {
+      setLastRunnerOutput(`Copy failed: ${String(error)}`);
+    }
+  }
+
   async function postConfigAction(body: Record<string, unknown>, preferredProjectId = activeProject?.id || "") {
     setConfigBusy(String(body.action || "config"));
     setLastRunnerOutput("");
@@ -2543,6 +2690,7 @@ export function App() {
       } else {
         setGit(null);
         setRunners([]);
+        setProjectOnboarding(null);
       }
       setLastRunnerOutput(`Config updated: ${body.action}`);
     } catch (error) {
@@ -3437,6 +3585,85 @@ export function App() {
             </button>
           </div>
           <div className="docs-link">{setup.docs}: README.md, README.zh-TW.md, docs/getting-started.md</div>
+        </section>
+
+        <section className="ops-card project-onboarding-card">
+          <div className="panel-head">
+            <div>
+              <div className="section-label">Project Onboarding</div>
+              <h2>Rules & capabilities</h2>
+            </div>
+            <button className="icon-action" onClick={() => void copyProjectOnboardingBrief()} title="Copy agent brief">
+              <Copy size={14} />
+            </button>
+          </div>
+          <p className="setup-subtitle">
+            {projectOnboarding
+              ? `${projectOnboarding.projectName}: ${projectOnboarding.summary.ok} ok / ${projectOnboarding.summary.warn} warn / ${projectOnboarding.summary.fail} fail`
+              : "Refresh to scan project rules, MCP, skills, prompts, plugins, and runner profiles."}
+          </p>
+          {copiedSetup === "project-onboarding-brief" && <div className="inline-success">Agent brief copied.</div>}
+
+          <div className="onboarding-check-grid">
+            {(projectOnboarding?.checks || []).map((item) => (
+              <div className={cx("onboarding-check", item.status)} key={item.id}>
+                <span>{item.status === "ok" ? <CheckCircle2 size={14} /> : <AlertTriangle size={14} />}</span>
+                <div>
+                  <strong>{item.label}</strong>
+                  <small>{item.detail || item.fix}</small>
+                </div>
+              </div>
+            ))}
+            {!projectOnboarding?.checks?.length && <div className="empty-note">No project onboarding scan yet.</div>}
+          </div>
+
+          <div className="onboarding-section-title">
+            <span>Runner profiles</span>
+            <em>{projectOnboarding?.runnerProfiles.length || 0}</em>
+          </div>
+          <div className="runner-profile-list">
+            {(projectOnboarding?.runnerProfiles || []).map((runner) => (
+              <div className={cx("runner-profile", runner.status)} key={runner.id}>
+                <div>
+                  <strong>{runner.name}</strong>
+                  <span>{runner.agent} / {runner.mode} / {runner.session}</span>
+                </div>
+                <small>{runner.detail}</small>
+                {!!runner.contextSources.length && <code>{runner.contextSources.join(" + ")}</code>}
+              </div>
+            ))}
+            {!projectOnboarding?.runnerProfiles?.length && <div className="empty-note">Add a Claude Code or Codex CLI runner to see its profile.</div>}
+          </div>
+
+          <div className="onboarding-section-title">
+            <span>Project context</span>
+            <em>{onboardingContextSources.filter((source) => source.exists).length}/{onboardingContextSources.length}</em>
+          </div>
+          <div className="context-source-list">
+            {onboardingContextSources.map((source) => (
+              <div className={cx("context-source-row", source.status)} key={source.id}>
+                <span>{sourceStatusIcon(source.status)}</span>
+                <div>
+                  <strong>{source.label}</strong>
+                  <small>{source.agent} / {source.kind} / {formatOnboardingSource(source)}</small>
+                </div>
+              </div>
+            ))}
+          </div>
+
+          <div className="onboarding-section-title">
+            <span>Local MCP / skills / plugins / prompts</span>
+            <em>{onboardingLocalItems.length}</em>
+          </div>
+          <div className="local-capability-list">
+            {onboardingLocalItems.map((item) => (
+              <div className="local-capability-row" key={`${item.path}-${item.id}`}>
+                <strong>{item.label}</strong>
+                <small>{item.kind} / {item.detail}</small>
+              </div>
+            ))}
+            {!onboardingLocalItems.length && <div className="empty-note">No local MCP, skills, commands, plugins, or prompts detected yet.</div>}
+          </div>
         </section>
 
         <section className="ops-card config-manager">

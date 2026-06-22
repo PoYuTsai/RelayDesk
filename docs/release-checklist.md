@@ -59,6 +59,7 @@ Open:
 
 - `http://127.0.0.1:8791/api/health`
 - `http://127.0.0.1:8791/api/doctor`
+- `http://127.0.0.1:8791/api/onboarding?projectId=<your-project-id>`
 
 Confirm Doctor reports:
 
@@ -79,6 +80,8 @@ Verify:
 
 - Projects load.
 - Doctor panel loads.
+- Project Onboarding panel loads and shows project rules, MCP, local
+  skills/plugins/prompts, and runner profiles.
 - Runner cards render.
 - Decision Inbox renders.
 - Evidence tray renders.

@@ -1,5 +1,5 @@
 import { createServer } from "node:http";
-import { mkdir, readFile, writeFile } from "node:fs/promises";
+import { mkdir, readFile, readdir, stat, writeFile } from "node:fs/promises";
 import { existsSync, readFileSync } from "node:fs";
 import { dirname, extname, join, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -24,6 +24,49 @@ const defaultConfig = {
       path: "C:\\path\\to\\MyApp",
       runners: []
     }
+  ]
+};
+
+const projectContextTargets = [
+  { id: "agents-md", agent: "shared", kind: "rules", label: "AGENTS.md", relative: "AGENTS.md", preview: true, primary: true },
+  { id: "claude-md", agent: "claude", kind: "rules", label: "CLAUDE.md", relative: "CLAUDE.md", preview: true, primary: true },
+  { id: "github-copilot", agent: "shared", kind: "rules", label: ".github/copilot-instructions.md", relative: ".github/copilot-instructions.md", preview: true },
+  { id: "mcp-json", agent: "shared", kind: "mcp", label: ".mcp.json", relative: ".mcp.json" },
+  { id: "claude-mcp-json", agent: "claude", kind: "mcp", label: ".claude/mcp.json", relative: ".claude/mcp.json" },
+  { id: "claude-mcp-servers", agent: "claude", kind: "mcp", label: ".claude/mcp_servers", relative: ".claude/mcp_servers", directory: true },
+  { id: "claude-settings", agent: "claude", kind: "settings", label: ".claude/settings.json", relative: ".claude/settings.json" },
+  { id: "claude-local-settings", agent: "claude", kind: "settings", label: ".claude/settings.local.json", relative: ".claude/settings.local.json" },
+  { id: "claude-commands", agent: "claude", kind: "commands", label: ".claude/commands", relative: ".claude/commands", directory: true },
+  { id: "claude-skills", agent: "claude", kind: "skills", label: ".claude/skills", relative: ".claude/skills", directory: true },
+  { id: "claude-agents", agent: "claude", kind: "subagents", label: ".claude/agents", relative: ".claude/agents", directory: true },
+  { id: "codex-config", agent: "codex", kind: "settings", label: ".codex/config.toml", relative: ".codex/config.toml" },
+  { id: "codex-mcp-json", agent: "codex", kind: "mcp", label: ".codex/mcp.json", relative: ".codex/mcp.json" },
+  { id: "codex-mcp-servers", agent: "codex", kind: "mcp", label: ".codex/mcp_servers", relative: ".codex/mcp_servers", directory: true },
+  { id: "codex-rules", agent: "codex", kind: "rules", label: ".codex/rules", relative: ".codex/rules", directory: true },
+  { id: "codex-skills", agent: "codex", kind: "skills", label: ".codex/skills", relative: ".codex/skills", directory: true },
+  { id: "codex-prompts", agent: "codex", kind: "prompts", label: ".codex/prompts", relative: ".codex/prompts", directory: true },
+  { id: "cursor-rules", agent: "shared", kind: "rules", label: ".cursor/rules", relative: ".cursor/rules", directory: true }
+];
+
+const userAgentTargets = {
+  codex: [
+    { id: "codex-user-config", kind: "settings", label: "config.toml", relative: "config.toml" },
+    { id: "codex-user-mcp-json", kind: "mcp", label: "mcp.json", relative: "mcp.json" },
+    { id: "codex-user-mcp-servers", kind: "mcp", label: "mcp_servers", relative: "mcp_servers", directory: true },
+    { id: "codex-user-skills", kind: "skills", label: "skills", relative: "skills", directory: true },
+    { id: "codex-user-plugins", kind: "plugins", label: "plugins", relative: "plugins", directory: true },
+    { id: "codex-user-prompts", kind: "prompts", label: "prompts", relative: "prompts", directory: true }
+  ],
+  claude: [
+    { id: "claude-user-settings", kind: "settings", label: "settings.json", relative: "settings.json" },
+    { id: "claude-user-local-settings", kind: "settings", label: "settings.local.json", relative: "settings.local.json" },
+    { id: "claude-user-mcp-json", kind: "mcp", label: "mcp.json", relative: "mcp.json" },
+    { id: "claude-user-mcp-servers", kind: "mcp", label: "mcp_servers", relative: "mcp_servers", directory: true },
+    { id: "claude-user-skills", kind: "skills", label: "skills", relative: "skills", directory: true },
+    { id: "claude-user-commands", kind: "commands", label: "commands", relative: "commands", directory: true },
+    { id: "claude-user-agents", kind: "subagents", label: "agents", relative: "agents", directory: true },
+    { id: "claude-user-plugins", kind: "plugins", label: "plugins", relative: "plugins", directory: true },
+    { id: "claude-user-channels", kind: "channels", label: "channels", relative: "channels", directory: true }
   ]
 };
 
@@ -242,6 +285,292 @@ function safeSegment(value) {
     .replace(/[^a-z0-9._-]+/gi, "-")
     .replace(/^-+|-+$/g, "")
     .slice(0, 80) || "item";
+}
+
+function summarizeChecks(checks) {
+  return checks.reduce(
+    (acc, item) => {
+      acc.total += 1;
+      acc[item.status] += 1;
+      return acc;
+    },
+    { ok: 0, warn: 0, fail: 0, total: 0 }
+  );
+}
+
+function compactPreview(text, max = 700) {
+  return String(text || "")
+    .replace(/\r/g, "")
+    .split("\n")
+    .map((line) => line.trim())
+    .filter(Boolean)
+    .slice(0, 12)
+    .join("\n")
+    .slice(0, max);
+}
+
+async function listDirectoryEntries(file, limit = 14) {
+  try {
+    const entries = await readdir(file, { withFileTypes: true });
+    return entries
+      .filter((entry) => !entry.name.startsWith(".DS_Store"))
+      .slice(0, limit)
+      .map((entry) => `${entry.name}${entry.isDirectory() ? "/" : ""}`);
+  } catch {
+    return [];
+  }
+}
+
+async function scanPath(base, target, options = {}) {
+  const relative = String(target.relative || "");
+  const file = resolve(base, relative);
+  const baseResolved = resolve(base);
+  if (!isInsideDir(file, baseResolved)) {
+    return {
+      id: target.id,
+      label: target.label,
+      agent: target.agent || options.agent || "shared",
+      kind: target.kind || "file",
+      relative,
+      path: file,
+      exists: false,
+      isDirectory: Boolean(target.directory),
+      status: "fail",
+      detail: "Path escapes scan root."
+    };
+  }
+  try {
+    const info = await stat(file);
+    const isDirectory = info.isDirectory();
+    const entries = isDirectory ? await listDirectoryEntries(file) : [];
+    const preview = target.preview && !isDirectory ? compactPreview(await readFile(file, "utf8")) : "";
+    return {
+      id: target.id,
+      label: target.label,
+      agent: target.agent || options.agent || "shared",
+      kind: target.kind || (isDirectory ? "directory" : "file"),
+      relative,
+      path: file,
+      exists: true,
+      isDirectory,
+      size: info.size,
+      entries,
+      preview,
+      status: "ok",
+      detail: isDirectory ? `${entries.length} visible item${entries.length === 1 ? "" : "s"}` : `${info.size} bytes`
+    };
+  } catch {
+    return {
+      id: target.id,
+      label: target.label,
+      agent: target.agent || options.agent || "shared",
+      kind: target.kind || (target.directory ? "directory" : "file"),
+      relative,
+      path: file,
+      exists: false,
+      isDirectory: Boolean(target.directory),
+      status: target.primary ? "warn" : "missing",
+      detail: target.primary ? "Recommended for project-level agent context." : "Not found."
+    };
+  }
+}
+
+async function scanHostAgentHome(agent, base) {
+  const targets = userAgentTargets[agent] || [];
+  const items = await Promise.all(targets.map((target) => scanPath(base, { ...target, agent }, { agent })));
+  return {
+    agent,
+    scope: "host user",
+    path: base,
+    exists: existsSync(base),
+    items
+  };
+}
+
+function parseWslScan(stdout, agent) {
+  const items = String(stdout || "")
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter(Boolean)
+    .map((line) => {
+      const [state, kind, relative, shapeOrCount, maybeCount] = line.split("|");
+      const isDirectory = shapeOrCount === "directory" || (maybeCount === undefined && kind !== "file");
+      const count = maybeCount === undefined ? shapeOrCount : maybeCount;
+      return {
+        id: `${agent}-wsl-${safeSegment(relative)}`,
+        label: relative,
+        agent,
+        kind,
+        relative,
+        path: `~/.${agent}/${relative}`,
+        exists: state === "exists",
+        isDirectory,
+        entries: [],
+        status: state === "exists" ? "ok" : "missing",
+        detail: state === "exists" ? `${count || 0} ${isDirectory ? "items" : "bytes"}` : "Not found."
+      };
+    });
+  return {
+    agent,
+    scope: "WSL user",
+    path: `~/.${agent}`,
+    exists: items.some((item) => item.exists),
+    items
+  };
+}
+
+async function scanWslAgentHome(agent) {
+  if (process.platform !== "win32") return null;
+  const targets = userAgentTargets[agent] || [];
+  const probe = targets
+    .map((target) => {
+      const relative = String(target.relative || "").replace(/'/g, "'\\''");
+      const kind = target.kind || (target.directory ? "directory" : "file");
+      return `p="$HOME/.${agent}/${relative}"; if [ -e "$p" ]; then if [ -d "$p" ]; then c=$(find "$p" -maxdepth 1 -mindepth 1 2>/dev/null | wc -l); echo "exists|${kind}|${relative}|directory|$c"; else c=$(wc -c < "$p" 2>/dev/null || echo 0); echo "exists|${kind}|${relative}|file|$c"; fi; else echo "missing|${kind}|${relative}|${target.directory ? "directory" : "file"}|0"; fi`;
+    })
+    .join("; ");
+  const result = await runCommand(["wsl.exe", "--exec", "bash", "-lc", probe], root, 8000);
+  if (!result.ok) return null;
+  return parseWslScan(result.stdout, agent);
+}
+
+function runnerAgent(runner) {
+  const text = JSON.stringify(runner || {}).toLowerCase();
+  if (runner.id === "claude-code" || text.includes("claude")) return "claude";
+  if (runner.id === "codex-cli" || text.includes("codex")) return "codex";
+  return "custom";
+}
+
+function runnerProfile(project, runner, contextRecords) {
+  const agent = runnerAgent(runner);
+  const command = String(runner.tmux?.startCommand || "");
+  const mode = runner.tmux?.mode || "wsl";
+  const cwd = runner.tmux?.cwd || project.path || "";
+  const expectedRules = contextRecords
+    .filter((item) => item.exists && (item.agent === "shared" || item.agent === agent))
+    .map((item) => item.label)
+    .slice(0, 8);
+  const warnings = [];
+  if (!command) warnings.push("No start command configured.");
+  if (agent === "claude" && !/--model\s+opus/.test(command) && !command.includes("CLAUDE_CMD")) {
+    warnings.push(`Runner does not explicitly request ${claudeUltraPreset.label}.`);
+  }
+  if (agent === "codex" && /\bcodex\b/i.test(command) && !/codex\.exe/i.test(command)) {
+    warnings.push("Runner may use PATH/WSL Codex instead of the Doctor-selected binary.");
+  }
+  return {
+    id: runner.id,
+    name: runner.name,
+    session: runner.session,
+    agent,
+    mode,
+    cwd,
+    startCommand: command,
+    status: warnings.length ? "warn" : "ok",
+    detail: warnings.join(" ") || `Will load ${expectedRules.length} project context source${expectedRules.length === 1 ? "" : "s"}.`,
+    contextSources: expectedRules
+  };
+}
+
+async function projectOnboarding(config, project) {
+  const exists = Boolean(project?.path && existsSync(project.path));
+  if (!project || !exists) {
+    const checks = [
+      check("project-path", "Project path", false, project?.path || "No project path configured.", "Set a real project path in relay.local.json.", "fail")
+    ];
+    return {
+      projectId: project?.id || "",
+      projectName: project?.name || "",
+      path: project?.path || "",
+      exists,
+      summary: summarizeChecks(checks),
+      checks,
+      contextSources: [],
+      agentHomes: [],
+      runnerProfiles: []
+    };
+  }
+
+  const contextSources = await Promise.all(projectContextTargets.map((target) => scanPath(project.path, target)));
+  const hostHomes = await Promise.all([
+    scanHostAgentHome("codex", join(homedir(), ".codex")),
+    scanHostAgentHome("claude", join(homedir(), ".claude"))
+  ]);
+  const wslHomes = (await Promise.all([scanWslAgentHome("claude"), scanWslAgentHome("codex")])).filter(Boolean);
+  const agentHomes = [...hostHomes, ...wslHomes];
+  const runners = project.runners || [];
+  const runnerProfiles = runners.map((runner) => runnerProfile(project, runner, contextSources));
+
+  const hasProjectRules = contextSources.some((item) => item.exists && item.kind === "rules");
+  const hasClaudeContext = contextSources.some((item) => item.exists && (item.agent === "claude" || item.agent === "shared"));
+  const hasCodexContext = contextSources.some((item) => item.exists && (item.agent === "codex" || item.agent === "shared"));
+  const hasLocalSkills = [...contextSources, ...agentHomes.flatMap((home) => home.items)].some(
+    (item) => item.exists && ["skills", "commands", "prompts", "plugins", "subagents", "channels"].includes(item.kind)
+  );
+  const mcpItems = [...contextSources, ...agentHomes.flatMap((home) => home.items)].filter((item) => item.exists && item.kind === "mcp");
+  const hasMcpConfig = mcpItems.length > 0;
+  const checks = [
+    check(
+      "project-rules",
+      "Project rules discovered",
+      hasProjectRules,
+      hasProjectRules ? "Found project-level rules or instruction files." : "No AGENTS.md, CLAUDE.md, .codex/rules, or similar rules found.",
+      "Add AGENTS.md or CLAUDE.md so agents start with project-specific context.",
+      "warn"
+    ),
+    check(
+      "claude-context",
+      "Claude context ready",
+      hasClaudeContext,
+      hasClaudeContext ? "Claude can see project/shared instructions." : "No Claude-specific project context detected.",
+      "Add CLAUDE.md or .claude/ project settings if Claude Code needs special rules.",
+      "warn"
+    ),
+    check(
+      "codex-context",
+      "Codex context ready",
+      hasCodexContext,
+      hasCodexContext ? "Codex can see project/shared instructions." : "No Codex/shared project context detected.",
+      "Add AGENTS.md or .codex/ project rules for Codex CLI.",
+      "warn"
+    ),
+    check(
+      "local-skills",
+      "Skills/plugins/prompts visible",
+      hasLocalSkills,
+      hasLocalSkills ? "Found local skills, prompts, commands, plugins, subagents, or channels." : "No local skills/plugins/prompts detected.",
+      "Install or define local skills/plugins/prompts only if your workflow depends on them.",
+      "warn"
+    ),
+    check(
+      "mcp-config",
+      "MCP config visible",
+      hasMcpConfig,
+      hasMcpConfig ? `Found ${mcpItems.length} project/user MCP config source${mcpItems.length === 1 ? "" : "s"}.` : "No project or user MCP config detected.",
+      "Add .mcp.json, .claude/mcp.json, .codex/mcp.json, or user-level MCP config only if your workflow depends on MCP tools.",
+      "warn"
+    ),
+    check(
+      "runner-profiles",
+      "Runner profiles configured",
+      runners.length > 0 && runnerProfiles.every((runner) => runner.status !== "fail"),
+      runners.length ? `${runners.length} runner profile${runners.length === 1 ? "" : "s"} configured.` : "No runners configured.",
+      "Add at least one Claude Code or Codex CLI runner.",
+      runners.length ? "warn" : "fail"
+    )
+  ];
+
+  return {
+    projectId: project.id,
+    projectName: project.name,
+    path: project.path,
+    exists,
+    summary: summarizeChecks(checks),
+    checks,
+    contextSources,
+    agentHomes,
+    runnerProfiles
+  };
 }
 
 function evidenceDir(project) {
@@ -1361,6 +1690,13 @@ async function route(req, res) {
 
   if (req.method === "GET" && url.pathname === "/api/doctor") {
     json(res, 200, await doctor(config));
+    return;
+  }
+
+  if (req.method === "GET" && url.pathname === "/api/onboarding") {
+    const project = findProject(config, url.searchParams.get("projectId"));
+    if (!project) return notFound(res);
+    json(res, 200, await projectOnboarding(config, project));
     return;
   }
 

@@ -136,6 +136,11 @@ the same readiness state in a shorter beginner-friendly form, includes a
 first-run checklist, and provides copy buttons for common install/config/run
 commands.
 
+Then check Project Onboarding. It scans project rules, MCP config, local
+skills/plugins/prompts, and runner profiles without editing anything. This is
+where you confirm that RelayDesk can see the same local project context your
+Claude Code and Codex CLI setup already depends on.
+
 ## 6. Manage projects and sessions
 
 Use Project Manager to edit `relay.local.json` from the browser:

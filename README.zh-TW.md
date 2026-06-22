@@ -64,6 +64,7 @@ RelayDesk 不是新的模型閘道，而是本機 runner cockpit。
 - Evidence tray：放截圖、影片、log、repro material。
 - Git 狀態和 diff stat。
 - Doctor checks：檢查本機環境、CLI、tmux、專案路徑、gitignore 安全性。
+- Project Onboarding：read-only 掃描專案 rules、MCP config、本機 skills/plugins/prompts、runner profile 是否對齊。
 - 第一次使用 checklist：用繁中/英文引導新手完成 config、project、runner、Doctor、Start。
 - Usage/activity：追蹤本機送出、capture、snapshot、session 等活動量。
 
