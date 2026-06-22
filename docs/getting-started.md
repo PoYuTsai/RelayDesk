@@ -206,10 +206,13 @@ If an agent asks a question:
 1. Click Capture.
 2. RelayDesk may create a decision card automatically.
 3. Choose an option.
-4. Click Ask reviewer to format the question for the other agent.
-5. Send it to the reviewer runner.
-6. Put the reviewer's conclusion or your decision in the note.
-7. Click Return verdict to format the final decision back to the source agent.
+4. Set `Source` to the agent that asked the question.
+5. Set `Reviewer` to the other agent.
+6. Click `Send review` to send the challenge prompt into the reviewer runner.
+7. Click `Capture reviewer` after the reviewer answers. RelayDesk appends that
+   pane output to the decision note.
+8. Edit the final verdict if needed.
+9. Click `Return source` to send the final decision back to the source agent.
 
 ## 13. Watch local activity
 

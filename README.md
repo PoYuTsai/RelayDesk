@@ -232,7 +232,20 @@ Each Decision Inbox card has two draft builders:
 - `Return verdict`: formats the final decision back to the source agent so it can
   continue with a minimal, scoped next step.
 
-The buttons only prepare text. You still choose which runner receives the relay.
+Each card also has a route selector:
+
+- `Source`: the agent that originally asked the question or will continue work.
+- `Reviewer`: the other agent that should challenge the decision.
+
+The three relay actions are:
+
+- `Send review`: sends the review request to the reviewer runner.
+- `Capture reviewer`: captures the reviewer tmux pane and appends it to the
+  decision note.
+- `Return source`: sends the final verdict back to the source runner.
+
+You can still edit the draft before sending. RelayDesk tracks whether the card is
+open, reviewing, reviewed, or returned so the handoff loop is visible.
 
 ## Usage / Activity
 

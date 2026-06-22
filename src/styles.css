@@ -991,11 +991,101 @@ h2 {
   border-color: rgba(139, 220, 147, 0.24);
 }
 
+.decision-state.reviewing {
+  color: #c7d2fe;
+  border-color: rgba(129, 140, 248, 0.32);
+}
+
+.decision-state.reviewed {
+  color: #fde68a;
+  border-color: rgba(245, 158, 11, 0.32);
+}
+
+.decision-state.returned {
+  color: #d8fff6;
+  border-color: rgba(139, 220, 147, 0.3);
+}
+
 .decision-prompt {
   margin: 9px 0 12px;
   color: var(--muted);
   font-size: 13px;
   line-height: 1.5;
+}
+
+.relay-route {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+  align-items: end;
+  gap: 9px;
+  margin-bottom: 10px;
+}
+
+.relay-route label {
+  display: grid;
+  gap: 5px;
+  min-width: 0;
+}
+
+.relay-route span {
+  color: var(--faint);
+  font-size: 10px;
+  font-weight: 900;
+  letter-spacing: 0;
+  text-transform: uppercase;
+}
+
+.relay-route select {
+  width: 100%;
+  min-width: 0;
+  height: 31px;
+  padding: 0 9px;
+  color: var(--text);
+  background: #090c10;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  outline: none;
+  font-size: 12px;
+  font-weight: 750;
+}
+
+.relay-route select:focus {
+  border-color: rgba(45, 212, 191, 0.5);
+}
+
+.relay-arrow {
+  height: 31px;
+  display: inline-flex;
+  align-items: center;
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 900;
+  text-transform: uppercase;
+}
+
+.relay-trail {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 7px;
+  margin: 0 0 11px;
+}
+
+.relay-trail span {
+  min-height: 24px;
+  display: inline-flex;
+  align-items: center;
+  padding: 0 8px;
+  color: var(--muted);
+  background: #0d1015;
+  border: 1px solid var(--line-soft);
+  border-radius: 7px;
+  font-size: 11px;
+  font-weight: 800;
+}
+
+.relay-trail span.done {
+  color: #d8fff6;
+  border-color: rgba(45, 212, 191, 0.3);
 }
 
 .decision-options,
@@ -2109,6 +2199,24 @@ pre {
 
   .decision-compose {
     justify-content: flex-start;
+    min-width: 0;
+  }
+
+  .relay-route {
+    grid-template-columns: 1fr;
+    align-items: stretch;
+  }
+
+  .relay-arrow {
+    height: auto;
+  }
+
+  .decision-footer {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .decision-footer small {
     min-width: 0;
   }
 

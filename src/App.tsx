@@ -172,13 +172,23 @@ type Evidence = {
 type DecisionItem = {
   id: string;
   source: string;
+  sourceRunnerId?: string;
+  reviewerRunnerId?: string;
   title: string;
   prompt: string;
   options: string[];
   selected: string;
   note: string;
   replyDraft: string;
-  status: "open" | "sent";
+  status: "open" | "reviewing" | "reviewed" | "sent" | "returned";
+  sentAt?: string;
+  reviewedAt?: string;
+  returnedAt?: string;
+};
+
+type RelayRouteContext = {
+  sourceName?: string;
+  reviewerName?: string;
 };
 
 type RelaySessionState = {
@@ -359,10 +369,13 @@ function makeDecisionTitle(prompt: string) {
   return normalized.length > 58 ? `${normalized.slice(0, 55)}...` : normalized || "Captured decision";
 }
 
-function buildAgentReply(decision: DecisionItem, task: string) {
+function buildAgentReply(decision: DecisionItem, task: string, route: RelayRouteContext = {}) {
   return [
     "Relay request for reviewer:",
+    route.sourceName || route.reviewerName ? `Route: ${route.sourceName || "source"} -> ${route.reviewerName || "reviewer"} -> source` : "",
     `Source: ${decision.source}`,
+    route.sourceName ? `Source runner: ${route.sourceName}` : "",
+    route.reviewerName ? `Reviewer runner: ${route.reviewerName}` : "",
     `Decision: ${decision.title}`,
     `Question: ${decision.prompt}`,
     `Current choice: ${decision.selected}`,
@@ -376,9 +389,10 @@ function buildAgentReply(decision: DecisionItem, task: string) {
     .join("\n");
 }
 
-function buildReturnVerdict(decision: DecisionItem, task: string) {
+function buildReturnVerdict(decision: DecisionItem, task: string, route: RelayRouteContext = {}) {
   return [
     "Relay verdict back to source agent:",
+    route.sourceName || route.reviewerName ? `Route: ${route.reviewerName || "reviewer"} -> ${route.sourceName || "source"}` : "",
     `Decision: ${decision.title}`,
     `我會選「${decision.selected}」。`,
     decision.note ? `Reason / reviewer note: ${decision.note}` : "",
@@ -428,7 +442,8 @@ function buildSessionBrief(input: {
   git: GitContext | null;
 }) {
   const openDecisions = input.decisions.filter((item) => item.status === "open").length;
-  const sentDecisions = input.decisions.filter((item) => item.status === "sent").length;
+  const relayDecisions = input.decisions.filter((item) => item.status === "reviewing" || item.status === "reviewed").length;
+  const returnedDecisions = input.decisions.filter((item) => item.status === "returned").length;
   return [
     `RelayDesk session: ${input.sessionKey}`,
     `Project: ${input.projectName}`,
@@ -436,7 +451,7 @@ function buildSessionBrief(input: {
     `Task: ${input.task}`,
     `Git: ${input.git?.clean ? "clean" : "dirty or unknown"} (${input.git?.branch || "unknown branch"})`,
     `Runners: ${input.runners.map((runner) => `${runner.name}=${runner.state}`).join(", ") || "none"}`,
-    `Decisions: ${openDecisions} open / ${sentDecisions} sent`,
+    `Decisions: ${openDecisions} open / ${relayDecisions} in relay / ${returnedDecisions} returned`,
     `Evidence: ${input.evidence.length} item${input.evidence.length === 1 ? "" : "s"}`,
     "",
     "Use this brief to continue the same local-agent workflow. Verify disk state before trusting any agent claim."
@@ -706,7 +721,7 @@ export function App() {
   const decisionCounts = useMemo(() => {
     return {
       open: decisions.filter((item) => item.status === "open").length,
-      sent: decisions.filter((item) => item.status === "sent").length
+      sent: decisions.filter((item) => item.status !== "open").length
     };
   }, [decisions]);
 
@@ -1234,6 +1249,8 @@ export function App() {
       const snapshotDecision: DecisionItem = {
         id: `snapshot-${runner.session}-${Date.now()}`,
         source: `${runner.session} snapshot`,
+        sourceRunnerId: runner.id,
+        reviewerRunnerId: defaultReviewerId(runner.id),
         title: "Conversation snapshot review",
         prompt: `Review the captured ${runner.session} conversation screen before the next agent step.`,
         options: ["Send to other agent", "Need OCR text", "Retake snapshot"],
@@ -1278,10 +1295,14 @@ export function App() {
 
   function buildEvidenceHandoff(item = selectedEvidence) {
     if (!item) return;
+    const sourceRunner = item.source ? runners.find((runner) => runner.session === item.source) : undefined;
+    const reviewerRunnerId = defaultReviewerId(sourceRunner?.id || commandRunner?.id || "");
     const replyDraft = evidenceHandoffText(item, task);
     const evidenceDecision: DecisionItem = {
       id: `evidence-${item.id}-${Date.now()}`,
       source: item.source ? `${item.source} evidence` : "Evidence tray",
+      sourceRunnerId: sourceRunner?.id || commandRunner?.id || "",
+      reviewerRunnerId,
       title: `Review evidence: ${item.name}`,
       prompt: `Review ${item.name} before the next agent step.`,
       options: ["Send to other agent", "Need OCR text", "Need more evidence"],
@@ -1292,6 +1313,62 @@ export function App() {
     };
     setDecisions((current) => [evidenceDecision, ...current].slice(0, 12));
     setLastRunnerOutput(`Evidence handoff drafted for ${item.name}.`);
+  }
+
+  function runnerById(id = "") {
+    return runners.find((runner) => runner.id === id);
+  }
+
+  function runnerFromDecisionSource(decision: DecisionItem) {
+    return runnerById(decision.sourceRunnerId) || runners.find((runner) => decision.source.includes(runner.session));
+  }
+
+  function defaultReviewerId(sourceRunnerId = "") {
+    return runners.find((runner) => runner.id !== sourceRunnerId)?.id || runners[0]?.id || "";
+  }
+
+  function decisionSourceRunner(decision: DecisionItem) {
+    return runnerFromDecisionSource(decision) || runnerById(writerRunnerId) || runners[0];
+  }
+
+  function decisionReviewerRunner(decision: DecisionItem) {
+    const sourceRunner = decisionSourceRunner(decision);
+    return runnerById(decision.reviewerRunnerId) || runnerById(defaultReviewerId(sourceRunner?.id || "")) || runners[0];
+  }
+
+  function relayRoute(decision: DecisionItem): RelayRouteContext {
+    const sourceRunner = decisionSourceRunner(decision);
+    const reviewerRunner = decisionReviewerRunner(decision);
+    return {
+      sourceName: sourceRunner?.session || decision.source,
+      reviewerName: reviewerRunner?.session
+    };
+  }
+
+  function relayPatch(decision: DecisionItem) {
+    const sourceRunner = decisionSourceRunner(decision);
+    const reviewerRunner = decisionReviewerRunner(decision);
+    return {
+      sourceRunnerId: sourceRunner?.id || "",
+      reviewerRunnerId: reviewerRunner?.id || ""
+    };
+  }
+
+  function trimmedRelayOutput(output: string) {
+    const cleaned = output
+      .split(/\r?\n/)
+      .map(cleanCaptureLine)
+      .filter(Boolean)
+      .join("\n")
+      .trim();
+    if (cleaned.length <= 1800) return cleaned || "Captured an empty tmux pane.";
+    return `${cleaned.slice(-1800)}\n[RelayDesk kept the latest 1800 characters.]`;
+  }
+
+  function appendReviewerNote(decision: DecisionItem, runner: Runner, output: string) {
+    const stamp = new Date().toLocaleString();
+    const block = [`Reviewer capture from ${runner.session} at ${stamp}:`, trimmedRelayOutput(output)].join("\n");
+    return [decision.note.trim(), block].filter(Boolean).join("\n\n");
   }
 
   function captureDecisions(output: string, runner: Runner) {
@@ -1312,6 +1389,8 @@ export function App() {
       found.push({
         id: `capture-${runner.session}-${Date.now()}-${found.length}`,
         source: runner.session,
+        sourceRunnerId: runner.id,
+        reviewerRunnerId: defaultReviewerId(runner.id),
         title: makeDecisionTitle(line),
         prompt: line,
         options: options.length >= 2 ? options : ["Proceed", "Hold", "Ask both agents"],
@@ -1356,6 +1435,8 @@ export function App() {
       {
         id: `decision-${Date.now()}`,
         source: "You",
+        sourceRunnerId: writerRunner?.id || "",
+        reviewerRunnerId: defaultReviewerId(writerRunner?.id || ""),
         title,
         prompt: value,
         options: ["Proceed", "Hold", "Ask both agents"],
@@ -1381,6 +1462,86 @@ export function App() {
     ]
       .filter(Boolean)
       .join("\n");
+  }
+
+  async function sendReviewRequest(decision: DecisionItem) {
+    const reviewerRunner = decisionReviewerRunner(decision);
+    if (!reviewerRunner) {
+      setLastRunnerOutput("No reviewer runner is configured for this decision.");
+      return;
+    }
+    const route = relayRoute(decision);
+    const patch = relayPatch(decision);
+    const text = buildAgentReply({ ...decision, ...patch }, task, route);
+    await runRunner(reviewerRunner, "send", {
+      text,
+      confirmMessage: `Send review request to ${reviewerRunner.session}?`,
+      onSuccess: () =>
+        updateDecision(decision.id, {
+          ...patch,
+          replyDraft: text,
+          status: "reviewing",
+          sentAt: new Date().toISOString()
+        })
+    });
+  }
+
+  async function captureReviewerVerdict(decision: DecisionItem) {
+    const reviewerRunner = decisionReviewerRunner(decision);
+    if (!reviewerRunner) {
+      setLastRunnerOutput("No reviewer runner is configured for this decision.");
+      return;
+    }
+    if (reviewerRunner.state !== "running") {
+      setLastRunnerOutput(`Start ${reviewerRunner.session} before capturing reviewer output.`);
+      return;
+    }
+
+    const patch = relayPatch(decision);
+    setBusyRunner(`${reviewerRunner.id}:relay-capture`);
+    try {
+      const result = await postRunnerAction(reviewerRunner, "capture");
+      const note = appendReviewerNote(decision, reviewerRunner, result.output || "");
+      const nextDecision = { ...decision, ...patch, note };
+      const replyDraft = buildReturnVerdict(nextDecision, task, relayRoute(nextDecision));
+      setConsoleOutput(result.output || "Captured an empty tmux pane.");
+      setConsoleLastCaptureAt(new Date().toLocaleTimeString());
+      updateDecision(decision.id, {
+        ...patch,
+        note,
+        replyDraft,
+        status: "reviewed",
+        reviewedAt: new Date().toISOString()
+      });
+      setLastRunnerOutput(`Reviewer verdict captured from ${reviewerRunner.session}.`);
+      await refresh(activeProject);
+    } catch (error) {
+      setLastRunnerOutput(`Reviewer capture failed: ${String(error)}`);
+    } finally {
+      setBusyRunner(null);
+    }
+  }
+
+  async function returnVerdictToSource(decision: DecisionItem) {
+    const sourceRunner = decisionSourceRunner(decision);
+    if (!sourceRunner) {
+      setLastRunnerOutput("No source runner is configured for this decision.");
+      return;
+    }
+    const route = relayRoute(decision);
+    const patch = relayPatch(decision);
+    const text = buildReturnVerdict({ ...decision, ...patch }, task, route);
+    await runRunner(sourceRunner, "send", {
+      text,
+      confirmMessage: `Return verdict to ${sourceRunner.session}?`,
+      onSuccess: () =>
+        updateDecision(decision.id, {
+          ...patch,
+          replyDraft: text,
+          status: "returned",
+          returnedAt: new Date().toISOString()
+        })
+    });
   }
 
   async function copyDecisionReply(decision: DecisionItem) {
@@ -1919,85 +2080,152 @@ export function App() {
             </div>
           </div>
           <div className="decision-list">
-            {decisions.map((decision) => (
-              <article className={cx("decision-card", decision.status === "sent" && "sent")} key={decision.id}>
-                <div className="decision-card-head">
-                  <div>
-                    <span className="decision-source">
-                      <Inbox size={13} />
-                      {decision.source}
-                    </span>
-                    <strong>{decision.title}</strong>
-                  </div>
-                  <span className={cx("decision-state", decision.status)}>
-                    {decision.status === "sent" ? <Check size={13} /> : <CircleDot size={13} />}
-                    {decision.status}
-                  </span>
-                </div>
-                <p className="decision-prompt">{decision.prompt}</p>
-                <div className="decision-options">
-                  {decision.options.map((option) => (
-                    <button
-                      key={option}
-                      className={cx("decision-option", decision.selected === option && "active")}
-                      onClick={() => updateDecision(decision.id, { selected: option, replyDraft: "", status: "open" })}
-                    >
-                      {option}
-                    </button>
-                  ))}
-                </div>
-                <textarea
-                  className="decision-note"
-                  value={decision.note}
-                  onChange={(event) => updateDecision(decision.id, { note: event.target.value, status: "open" })}
-                  placeholder="Decision context..."
-                />
-                <div className="reply-draft-box">
-                  <div className="reply-draft-head">
-                    <span>Cross-agent reply</span>
+            {decisions.map((decision) => {
+              const routedDecision = { ...decision, ...relayPatch(decision) };
+              const sourceRunner = decisionSourceRunner(routedDecision);
+              const reviewerRunner = decisionReviewerRunner(routedDecision);
+              const route = relayRoute(routedDecision);
+
+              return (
+                <article className={cx("decision-card", decision.status !== "open" && "sent")} key={decision.id}>
+                  <div className="decision-card-head">
                     <div>
-                      <button onClick={() => updateDecision(decision.id, { replyDraft: buildAgentReply(decision, task), status: "open" })}>
-                        Ask reviewer
-                      </button>
-                      <button onClick={() => updateDecision(decision.id, { replyDraft: buildReturnVerdict(decision, task), status: "open" })}>
-                        Return verdict
-                      </button>
-                      <button onClick={() => void copyDecisionReply(decision)}>
-                        <Copy size={13} />
-                        {copiedDecision === decision.id ? "Copied" : "Copy"}
-                      </button>
+                      <span className="decision-source">
+                        <Inbox size={13} />
+                        {decision.source}
+                      </span>
+                      <strong>{decision.title}</strong>
                     </div>
+                    <span className={cx("decision-state", decision.status)}>
+                      {decision.status !== "open" ? <Check size={13} /> : <CircleDot size={13} />}
+                      {decision.status}
+                    </span>
                   </div>
-                  <textarea
-                    className="reply-draft"
-                    value={decision.replyDraft}
-                    onChange={(event) => updateDecision(decision.id, { replyDraft: event.target.value, status: "open" })}
-                    placeholder="Paste or build the exact reply you want to send to the other agent..."
-                  />
-                </div>
-                <div className="decision-footer">
-                  <small>{decision.replyDraft.trim() ? "custom reply draft" : decision.selected}</small>
-                  <div className="decision-actions">
-                    {runners.map((runner) => (
-                      <button
-                        key={`${decision.id}-${runner.id}`}
-                        disabled={!!busyRunner || runner.state !== "running"}
-                        onClick={() =>
-                          void runRunner(runner, "send", {
-                            text: decisionText(decision),
-                            confirmMessage: `Send this decision to ${runner.session}?`,
-                            onSuccess: () => updateDecision(decision.id, { status: "sent" })
-                          })
-                        }
+                  <p className="decision-prompt">{decision.prompt}</p>
+                  <div className="relay-route">
+                    <label>
+                      <span>Source</span>
+                      <select
+                        value={routedDecision.sourceRunnerId || ""}
+                        onChange={(event) => {
+                          const sourceRunnerId = event.target.value;
+                          updateDecision(decision.id, {
+                            sourceRunnerId,
+                            reviewerRunnerId:
+                              decision.reviewerRunnerId && decision.reviewerRunnerId !== sourceRunnerId
+                                ? decision.reviewerRunnerId
+                                : defaultReviewerId(sourceRunnerId),
+                            status: "open"
+                          });
+                        }}
                       >
-                        <Send size={13} />
-                        Send to {runner.session}
+                        <option value="">Manual / unknown</option>
+                        {runners.map((runner) => (
+                          <option value={runner.id} key={`${decision.id}-source-${runner.id}`}>
+                            {runner.session}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+                    <div className="relay-arrow">to</div>
+                    <label>
+                      <span>Reviewer</span>
+                      <select
+                        value={routedDecision.reviewerRunnerId || ""}
+                        onChange={(event) => updateDecision(decision.id, { reviewerRunnerId: event.target.value, status: "open" })}
+                      >
+                        <option value="">Choose reviewer</option>
+                        {runners.map((runner) => (
+                          <option value={runner.id} key={`${decision.id}-reviewer-${runner.id}`}>
+                            {runner.session}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+                  </div>
+                  <div className="relay-trail">
+                    <span className={cx(decision.sentAt && "done")}>review {decision.sentAt ? formatTime(decision.sentAt) : "not sent"}</span>
+                    <span className={cx(decision.reviewedAt && "done")}>capture {decision.reviewedAt ? formatTime(decision.reviewedAt) : "waiting"}</span>
+                    <span className={cx(decision.returnedAt && "done")}>return {decision.returnedAt ? formatTime(decision.returnedAt) : "pending"}</span>
+                  </div>
+                  <div className="decision-options">
+                    {decision.options.map((option) => (
+                      <button
+                        key={option}
+                        className={cx("decision-option", decision.selected === option && "active")}
+                        onClick={() => updateDecision(decision.id, { selected: option, replyDraft: "", status: "open" })}
+                      >
+                        {option}
                       </button>
                     ))}
                   </div>
-                </div>
-              </article>
-            ))}
+                  <textarea
+                    className="decision-note"
+                    value={decision.note}
+                    onChange={(event) => updateDecision(decision.id, { note: event.target.value, status: "open" })}
+                    placeholder="Decision context or reviewer verdict..."
+                  />
+                  <div className="reply-draft-box">
+                    <div className="reply-draft-head">
+                      <span>Cross-agent reply</span>
+                      <div>
+                        <button
+                          onClick={() =>
+                            updateDecision(decision.id, {
+                              ...relayPatch(decision),
+                              replyDraft: buildAgentReply(routedDecision, task, route),
+                              status: "open"
+                            })
+                          }
+                        >
+                          Ask reviewer
+                        </button>
+                        <button
+                          onClick={() =>
+                            updateDecision(decision.id, {
+                              ...relayPatch(decision),
+                              replyDraft: buildReturnVerdict(routedDecision, task, route),
+                              status: "open"
+                            })
+                          }
+                        >
+                          Return verdict
+                        </button>
+                        <button onClick={() => void copyDecisionReply(decision)}>
+                          <Copy size={13} />
+                          {copiedDecision === decision.id ? "Copied" : "Copy"}
+                        </button>
+                      </div>
+                    </div>
+                    <textarea
+                      className="reply-draft"
+                      value={decision.replyDraft}
+                      onChange={(event) => updateDecision(decision.id, { replyDraft: event.target.value, status: "open" })}
+                      placeholder="Paste or build the exact reply you want to send to the other agent..."
+                    />
+                  </div>
+                  <div className="decision-footer">
+                    <small>
+                      {route.sourceName || "manual source"} {"->"} {route.reviewerName || "reviewer"} {"->"} source
+                    </small>
+                    <div className="decision-actions">
+                      <button disabled={!!busyRunner || !reviewerRunner || reviewerRunner.state !== "running"} onClick={() => void sendReviewRequest(decision)}>
+                        <Send size={13} />
+                        Send review
+                      </button>
+                      <button disabled={!!busyRunner || !reviewerRunner || reviewerRunner.state !== "running"} onClick={() => void captureReviewerVerdict(decision)}>
+                        <FileDiff size={13} />
+                        Capture reviewer
+                      </button>
+                      <button disabled={!!busyRunner || !sourceRunner || sourceRunner.state !== "running"} onClick={() => void returnVerdictToSource(decision)}>
+                        <Send size={13} />
+                        Return source
+                      </button>
+                    </div>
+                  </div>
+                </article>
+              );
+            })}
           </div>
         </section>
 
