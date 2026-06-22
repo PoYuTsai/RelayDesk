@@ -3837,33 +3837,6 @@ export function App() {
           </section>
         )}
 
-        <nav className="focus-stepper" aria-label="Workflow">
-          {steps.map((step, index) => (
-            <button
-              key={`focus-step-${step}`}
-              className={cx("step", step === activeStep && "active", steps.indexOf(activeStep) > index && "done")}
-              onClick={() => setActiveStep(step)}
-            >
-              <span>{index + 1}</span>
-              {ui.steps[step]}
-            </button>
-          ))}
-        </nav>
-
-        <section className="focus-card focus-task-card">
-          <div className="panel-head">
-            <div>
-              <div className="section-label">{ui.task.label}</div>
-              <h2>{activeSession?.title || ui.task.title}</h2>
-            </div>
-            <button className="ghost-button" onClick={() => void refresh()}>
-              <RefreshCcw size={14} />
-              {ui.task.refresh}
-            </button>
-          </div>
-          <textarea value={task} onChange={(event) => setTask(event.target.value)} />
-        </section>
-
         <section className="focus-duo-grid">
           {focusRunners.map((runner) => {
             const row = usageByRunner.get(runner.id);

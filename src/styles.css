@@ -259,13 +259,6 @@ button {
   flex: 0 0 auto;
 }
 
-.focus-stepper {
-  flex: 0 0 auto;
-  display: grid;
-  grid-template-columns: repeat(5, minmax(0, 1fr));
-  gap: 8px;
-}
-
 .focus-card {
   min-width: 0;
   background: var(--panel);
@@ -331,32 +324,6 @@ button {
 .focus-session-preview em {
   color: var(--accent-2);
   font-style: normal;
-}
-
-.focus-task-card {
-  flex: 0 0 auto;
-  padding: 12px;
-}
-
-.focus-task-card h2 {
-  overflow: hidden;
-  max-width: 720px;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.focus-task-card textarea {
-  width: 100%;
-  height: 58px;
-  margin-top: 10px;
-  padding: 12px;
-  resize: none;
-  color: var(--text);
-  background: #0d1015;
-  border: 1px solid var(--line);
-  border-radius: 8px;
-  outline: none;
-  line-height: 1.45;
 }
 
 .focus-duo-grid {
