@@ -57,6 +57,7 @@ type ConfigRunner = {
     cwd?: string;
     startCommand?: string;
     entryCommand?: string;
+    terminalProfile?: string;
     dismissCodexUpdatePrompt?: boolean;
   };
 };
@@ -320,6 +321,14 @@ type RelayBusEvent = {
 type RelayRouteContext = {
   sourceName?: string;
   reviewerName?: string;
+};
+
+type SnapshotRelayDraft = {
+  evidence: Evidence;
+  decision: DecisionItem;
+  sourceRunnerId: string;
+  reviewerRunnerId: string;
+  replyDraft: string;
 };
 
 type RelaySessionState = {
@@ -1517,33 +1526,98 @@ async function copyTextToClipboard(text: string) {
   }
 }
 
-async function captureDisplayFrame() {
-  if (!navigator.mediaDevices?.getDisplayMedia) {
-    throw new Error("Screen capture is not available in this browser context.");
+function escapeAttributeSelector(value: string) {
+  return value.replace(/\\/g, "\\\\").replace(/"/g, "\\\"");
+}
+
+function drawWrappedText(
+  context: CanvasRenderingContext2D,
+  text: string,
+  x: number,
+  y: number,
+  maxWidth: number,
+  lineHeight: number,
+  maxY: number
+) {
+  let cursorY = y;
+  for (const paragraph of text.split(/\r?\n/)) {
+    if (cursorY > maxY) break;
+    if (!paragraph.trim()) {
+      cursorY += lineHeight;
+      continue;
+    }
+
+    let line = "";
+    for (const character of Array.from(paragraph)) {
+      const next = `${line}${character}`;
+      if (line && context.measureText(next).width > maxWidth) {
+        context.fillText(line, x, cursorY);
+        cursorY += lineHeight;
+        line = character;
+        if (cursorY > maxY) break;
+      } else {
+        line = next;
+      }
+    }
+    if (line && cursorY <= maxY) {
+      context.fillText(line, x, cursorY);
+      cursorY += lineHeight;
+    }
   }
-  const stream = await navigator.mediaDevices.getDisplayMedia({ video: true, audio: false });
-  try {
-    const video = document.createElement("video");
-    video.srcObject = stream;
-    video.muted = true;
-    await new Promise<void>((resolve, reject) => {
-      video.onloadedmetadata = () => resolve();
-      video.onerror = () => reject(new Error("Could not load captured video stream."));
-    });
-    await video.play();
-    await new Promise((resolve) => window.setTimeout(resolve, 180));
-    const width = video.videoWidth || 1280;
-    const height = video.videoHeight || 720;
-    const canvas = document.createElement("canvas");
-    canvas.width = width;
-    canvas.height = height;
-    const context = canvas.getContext("2d");
-    if (!context) throw new Error("Could not create snapshot canvas.");
-    context.drawImage(video, 0, 0, width, height);
-    return { dataUrl: canvas.toDataURL("image/png"), width, height };
-  } finally {
-    stream.getTracks().forEach((track) => track.stop());
-  }
+  return cursorY;
+}
+
+function captureAgentPaneFrame(runner: Runner) {
+  const pane = document.querySelector<HTMLElement>(`[data-runner-pane="${escapeAttributeSelector(runner.id)}"]`);
+  const output = document.querySelector<HTMLElement>(`[data-runner-output="${escapeAttributeSelector(runner.id)}"]`);
+  const paneRect = pane?.getBoundingClientRect();
+  const outputRect = output?.getBoundingClientRect();
+  const cssWidth = Math.max(640, Math.round(paneRect?.width || 860));
+  const cssHeight = Math.max(420, Math.round(paneRect?.height || 620));
+  const scale = Math.min(2, window.devicePixelRatio || 1);
+  const canvas = document.createElement("canvas");
+  canvas.width = Math.round(cssWidth * scale);
+  canvas.height = Math.round(cssHeight * scale);
+  const context = canvas.getContext("2d");
+  if (!context) throw new Error("Could not create snapshot canvas.");
+  context.scale(scale, scale);
+
+  context.fillStyle = "#0b0f14";
+  context.fillRect(0, 0, cssWidth, cssHeight);
+  context.fillStyle = "#111820";
+  context.strokeStyle = "rgba(45, 212, 191, 0.62)";
+  context.lineWidth = 2;
+  context.beginPath();
+  context.roundRect(1, 1, cssWidth - 2, cssHeight - 2, 8);
+  context.fill();
+  context.stroke();
+
+  context.fillStyle = "#e6edf7";
+  context.font = "700 24px ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, Segoe UI, sans-serif";
+  context.fillText(runner.name, 20, 38);
+  context.fillStyle = "#8fa0b6";
+  context.font = "14px ui-monospace, SFMono-Regular, Consolas, Liberation Mono, monospace";
+  context.fillText(runner.session, 20, 62);
+
+  const outputX = Math.max(18, Math.round((outputRect && paneRect ? outputRect.left - paneRect.left : 20)));
+  const outputY = Math.max(82, Math.round((outputRect && paneRect ? outputRect.top - paneRect.top : 88)));
+  const outputWidth = Math.min(cssWidth - outputX - 18, Math.round(outputRect?.width || cssWidth - 40));
+  const outputHeight = Math.min(cssHeight - outputY - 18, Math.round(outputRect?.height || cssHeight - outputY - 22));
+  context.fillStyle = "#300a24";
+  context.strokeStyle = "rgba(255, 255, 255, 0.18)";
+  context.lineWidth = 1;
+  context.beginPath();
+  context.roundRect(outputX, outputY, outputWidth, outputHeight, 8);
+  context.fill();
+  context.stroke();
+
+  const rawText = output?.innerText?.trim() || "No local pane activity yet.";
+  const latestText = rawText.split(/\r?\n/).slice(-90).join("\n");
+  context.fillStyle = "#f7f2ff";
+  context.font = "13px ui-monospace, SFMono-Regular, Consolas, Liberation Mono, monospace";
+  drawWrappedText(context, latestText, outputX + 16, outputY + 28, outputWidth - 32, 19, outputY + outputHeight - 16);
+
+  return { dataUrl: canvas.toDataURL("image/png"), width: canvas.width, height: canvas.height };
 }
 
 function RunnerDot({ state }: { state: Runner["state"] }) {
@@ -1701,7 +1775,7 @@ function runnerRemoteStatus(runner: Runner, configRunner: ConfigRunner | undefin
   if (/Remote Control failed[\s\S]*\/login/i.test(output || "")) {
     return {
       status: "fail" as const,
-      label: zh ? "Remote 未啟動" : "Remote needs login"
+      label: zh ? "Remote 需登入" : "Remote needs login"
     };
   }
   if (/Remote Control failed/i.test(output || "")) {
@@ -1710,7 +1784,7 @@ function runnerRemoteStatus(runner: Runner, configRunner: ConfigRunner | undefin
       label: zh ? "Remote 失敗" : "Remote failed"
     };
   }
-  if (runner.state === "running") {
+  if (/Remote Control active/i.test(output || "")) {
     return {
       status: "ok" as const,
       label: zh ? "Remote" : "Remote"
@@ -1718,7 +1792,7 @@ function runnerRemoteStatus(runner: Runner, configRunner: ConfigRunner | undefin
   }
   return {
     status: "warn" as const,
-    label: zh ? "Remote 未啟動" : "Remote off"
+    label: runner.state === "running" ? (zh ? "Remote 未啟動" : "Remote not active") : (zh ? "Remote 離線" : "Remote off")
   };
 }
 
@@ -1812,6 +1886,7 @@ function runnerDefaults(project: Project | undefined, type: string, mode: Runner
       name: "Claude Code tmux",
       session: `rc-${projectId}`,
       cwd,
+      terminalProfile: mode === "wsl" ? "Ubuntu" : "",
       startCommand: mode === "wsl" ? withWslShell(claudeCommand) : claudeCommand
     };
   }
@@ -1821,6 +1896,7 @@ function runnerDefaults(project: Project | undefined, type: string, mode: Runner
       name: "Codex CLI tmux",
       session: `rc-codex-${projectId}`,
       cwd,
+      terminalProfile: mode === "wsl" ? "Ubuntu" : "",
       startCommand: mode === "wsl" ? withWslShell(codexCommand) : codexCommand
     };
   }
@@ -1829,6 +1905,7 @@ function runnerDefaults(project: Project | undefined, type: string, mode: Runner
     name: "Custom tmux",
     session: `rc-${projectId}-custom`,
     cwd,
+    terminalProfile: mode === "wsl" ? "Ubuntu" : "",
     startCommand: mode === "wsl" ? withWslShell('echo "configure this runner"') : 'echo "configure this runner"'
   };
 }
@@ -2177,6 +2254,7 @@ export function App() {
   const [consoleLastCaptureAt, setConsoleLastCaptureAt] = useState("");
   const [inspectorOpen, setInspectorOpen] = useState(false);
   const [runnerPaneOutputs, setRunnerPaneOutputs] = useState<Record<string, RunnerPaneOutput>>({});
+  const [snapshotRelayDraft, setSnapshotRelayDraft] = useState<SnapshotRelayDraft | null>(null);
   const [newProjectName, setNewProjectName] = useState("");
   const [newProjectPath, setNewProjectPath] = useState("");
   const [runnerType, setRunnerType] = useState("claude-code");
@@ -2352,6 +2430,7 @@ export function App() {
       session,
       startCommand,
       entryCommand,
+      terminalProfile: runnerPreset.terminalProfile,
       warnings
     };
   }, [
@@ -2364,6 +2443,7 @@ export function App() {
     runnerPreset.id,
     runnerPreset.session,
     runnerPreset.startCommand,
+    runnerPreset.terminalProfile,
     runnerSession,
     runnerStartCommand,
     runnerEntryCommand,
@@ -3173,6 +3253,29 @@ export function App() {
     }
   }
 
+  async function refreshRunnerStatus(runner: Runner) {
+    if (runner.state !== "running") {
+      const message = `${runner.session} is not running. Start it before refreshing status.`;
+      replaceConsoleOutput(runner.id, message, "error");
+      setLastRunnerOutput(message);
+      return;
+    }
+    setBusyRunner(`${runner.id}:status-refresh`);
+    try {
+      await postRunnerAction(runner, "send", { text: "/status" });
+      appendConsoleOutput(runner.id, `[RelayDesk status -> ${runner.session}]\n/status`);
+      await new Promise<void>((resolve) => window.setTimeout(resolve, 900));
+      await captureConsole(runner, { mode: "peek", silent: true });
+      await refresh(activeProject);
+    } catch (error) {
+      const message = `Status refresh failed: ${String(error)}`;
+      replaceConsoleOutput(runner.id, message, "error");
+      setLastRunnerOutput(message);
+    } finally {
+      setBusyRunner(null);
+    }
+  }
+
   async function captureConsole(
     runner = commandRunner,
     options: { mode?: "peek" | "capture"; silent?: boolean } = {}
@@ -3335,7 +3438,7 @@ export function App() {
     setBusyRunner(`${runner.id}:snapshot`);
     setLastRunnerOutput("");
     try {
-      const frame = await captureDisplayFrame();
+      const frame = captureAgentPaneFrame(runner);
       const response = await fetch("/api/evidence", {
         method: "POST",
         headers: { "content-type": "application/json" },
@@ -3423,10 +3526,78 @@ export function App() {
         decisionId: snapshotDecision.id,
         evidenceId: evidenceItem.id
       });
-      setLastRunnerOutput(`Snapshot saved and review card drafted.\nWindows: ${saved.hostPath}\nWSL: ${saved.wslPath}`);
+      setSnapshotRelayDraft({
+        evidence: evidenceItem,
+        decision: snapshotDecision,
+        sourceRunnerId: runner.id,
+        reviewerRunnerId,
+        replyDraft
+      });
+      setLastRunnerOutput(`Snapshot saved. Choose where to send it next.\nWindows: ${saved.hostPath}\nWSL: ${saved.wslPath}`);
       await refresh(activeProject);
     } catch (error) {
       setLastRunnerOutput(`Snapshot failed: ${String(error)}`);
+    } finally {
+      setBusyRunner(null);
+    }
+  }
+
+  async function sendSnapshotRelayDraft(target: "reviewer" | "both" | "store") {
+    const draft = snapshotRelayDraft;
+    if (!draft) return;
+    if (target === "store") {
+      setSnapshotRelayDraft(null);
+      setLastRunnerOutput(`Snapshot saved in Evidence. No agent message was sent.`);
+      return;
+    }
+
+    const sourceRunner = runnerById(draft.sourceRunnerId);
+    const reviewerRunner = runnerById(draft.reviewerRunnerId);
+    const targetRunners = (target === "both" ? [sourceRunner, reviewerRunner] : [reviewerRunner])
+      .filter((runner): runner is Runner => Boolean(runner));
+    const uniqueTargets = Array.from(new Map(targetRunners.map((runner) => [runner.id, runner])).values());
+    const stoppedRunner = uniqueTargets.find((runner) => runner.state !== "running");
+
+    if (!uniqueTargets.length) {
+      setLastRunnerOutput("No reviewer runner is configured for this snapshot.");
+      return;
+    }
+    if (stoppedRunner) {
+      setLastRunnerOutput(`Start ${stoppedRunner.session} before sending the snapshot.`);
+      return;
+    }
+
+    setBusyRunner(`snapshot-relay:${target}`);
+    try {
+      await Promise.all(uniqueTargets.map((runner) => postRunnerAction(runner, "send", { text: draft.replyDraft })));
+      uniqueTargets.forEach((runner) => {
+        appendConsoleOutput(runner.id, `[RelayDesk snapshot -> ${runner.session}]\n${draft.replyDraft}`);
+        appendBusEvent({
+          kind: "review_request",
+          status: "sent",
+          title: `Snapshot sent to ${runner.session}`,
+          summary: draft.replyDraft,
+          sourceRunnerId: draft.sourceRunnerId,
+          sourceName: sourceRunner?.session || draft.decision.source,
+          targetRunnerId: runner.id,
+          targetName: runner.session,
+          decisionId: draft.decision.id,
+          evidenceId: draft.evidence.id
+        });
+      });
+      updateDecision(draft.decision.id, {
+        status: "reviewing",
+        sentAt: new Date().toISOString()
+      });
+      await new Promise<void>((resolve) => window.setTimeout(resolve, 850));
+      await Promise.all(uniqueTargets.map((runner) => captureConsole(runner, { mode: "peek", silent: true })));
+      setSnapshotRelayDraft(null);
+      setLastRunnerOutput(`Snapshot sent to ${uniqueTargets.map((runner) => runner.session).join(", ")}.`);
+      await refresh(activeProject);
+    } catch (error) {
+      const message = `Snapshot relay failed: ${String(error)}`;
+      setLastRunnerOutput(message);
+      replaceConsoleOutput(uniqueTargets[0]?.id || draft.sourceRunnerId, message, "error");
     } finally {
       setBusyRunner(null);
     }
@@ -4032,7 +4203,7 @@ export function App() {
   async function addRunnerConfig() {
     if (!activeProject) return;
     if (runnerPreview.blockers.length) return;
-    const { cwd, session, startCommand, entryCommand } = runnerPreview;
+    const { cwd, session, startCommand, entryCommand, terminalProfile } = runnerPreview;
     await postConfigAction(
       {
         action: "add-runner",
@@ -4044,6 +4215,7 @@ export function App() {
         cwd,
         startCommand,
         entryCommand,
+        terminalProfile,
         mode: runnerMode,
         dismissCodexUpdatePrompt: runnerType === "codex-cli"
       },
@@ -4438,6 +4610,7 @@ export function App() {
               <article
                 className={cx("focus-agent-pane", isSelected && "selected")}
                 key={`focus-agent-${runner.id}`}
+                data-runner-pane={runner.id}
                 role="button"
                 tabIndex={0}
                 aria-pressed={isSelected}
@@ -4462,14 +4635,23 @@ export function App() {
                     <RunnerDot state={runner.state} />
                   </div>
                 </div>
-                <div className="agent-usage-strip" title={lang === "zh-TW" ? "從目前 agent 狀態輸出解析；可送 /status 更新。" : "Parsed from the current agent status output; send /status to refresh."}>
+                <button
+                  type="button"
+                  className="agent-usage-strip"
+                  disabled={!!busyRunner || runner.state !== "running"}
+                  title={lang === "zh-TW" ? "點一下送 /status 並刷新這 4 個狀態。" : "Click to send /status and refresh these 4 metrics."}
+                  onClick={(event) => {
+                    event.stopPropagation();
+                    void refreshRunnerStatus(runner);
+                  }}
+                >
                   {statusMetrics.map((metric) => (
                     <span key={`${runner.id}-${metric.label}`}>
                       <small>{metric.label}</small>
                       <strong>{metric.value}</strong>
                     </span>
                   ))}
-                </div>
+                </button>
                 {needsLogin && (
                   <div className="focus-login-guide">
                     <div>
@@ -4485,7 +4667,7 @@ export function App() {
                     </div>
                   </div>
                 )}
-                <div className="focus-agent-output">
+                <div className="focus-agent-output" data-runner-output={runner.id}>
                   {paneOutput || (runner.state === "running" ? ui.console.empty : row ? `${row.lastAction || "idle"} · ${formatTime(row.lastAt)}` : ui.trust.noActivity)}
                 </div>
                 {paneHints.length > 0 && (
@@ -5021,6 +5203,52 @@ export function App() {
           </div>
         </details>
       </aside>
+      {snapshotRelayDraft && (() => {
+        const sourceRunner = runnerById(snapshotRelayDraft.sourceRunnerId);
+        const reviewerRunner = runnerById(snapshotRelayDraft.reviewerRunnerId);
+        const reviewerReady = Boolean(reviewerRunner && reviewerRunner.state === "running");
+        const bothReady = Boolean(sourceRunner && sourceRunner.state === "running" && reviewerReady);
+        return (
+          <div className="snapshot-relay-backdrop" role="presentation" onClick={() => setSnapshotRelayDraft(null)}>
+            <section
+              className="snapshot-relay-dialog"
+              role="dialog"
+              aria-modal="true"
+              aria-labelledby="snapshot-relay-title"
+              onClick={(event) => event.stopPropagation()}
+            >
+              <div>
+                <span>{lang === "zh-TW" ? "已截取對話窗" : "Pane captured"}</span>
+                <h2 id="snapshot-relay-title">{lang === "zh-TW" ? "要把這張截圖交給誰？" : "Who should receive this screenshot?"}</h2>
+                <p>
+                  {sourceRunner?.session || snapshotRelayDraft.decision.source}
+                  {" -> "}
+                  {reviewerRunner?.session || (lang === "zh-TW" ? "對方 agent" : "reviewer")}
+                </p>
+              </div>
+              <div className="snapshot-relay-actions">
+                <button disabled={!!busyRunner || !reviewerReady} onClick={() => void sendSnapshotRelayDraft("reviewer")}>
+                  <Send size={14} />
+                  {lang === "zh-TW" ? "送給對方" : "Send to other agent"}
+                </button>
+                <button disabled={!!busyRunner || !bothReady} onClick={() => void sendSnapshotRelayDraft("both")}>
+                  <Workflow size={14} />
+                  {lang === "zh-TW" ? "送給兩邊" : "Send to both"}
+                </button>
+                <button onClick={() => void sendSnapshotRelayDraft("store")}>
+                  <Archive size={14} />
+                  {lang === "zh-TW" ? "只存證據" : "Store only"}
+                </button>
+              </div>
+              <small>
+                {lang === "zh-TW"
+                  ? "不會截整個螢幕；只會保存你剛按的那個 agent 對話窗。"
+                  : "Only the selected agent pane is saved, not the whole screen."}
+              </small>
+            </section>
+          </div>
+        );
+      })()}
     </main>
   );
 

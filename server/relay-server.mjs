@@ -123,6 +123,7 @@ function defaultRunner(project, body) {
   const cwd = String(body.cwd || project.path || "").trim();
   const startCommand = String(body.startCommand || "").trim();
   const entryCommand = String(body.entryCommand || "").trim();
+  const terminalProfile = String(body.terminalProfile || (mode === "wsl" ? "Ubuntu" : "")).trim();
   return {
     id,
     name,
@@ -133,6 +134,7 @@ function defaultRunner(project, body) {
       cwd,
       startCommand,
       ...(entryCommand ? { entryCommand } : {}),
+      ...(terminalProfile ? { terminalProfile } : {}),
       ...(type === "codex-cli" || body.dismissCodexUpdatePrompt ? { dismissCodexUpdatePrompt: true } : {})
     }
   };
@@ -1701,7 +1703,7 @@ async function stopTmuxRunner(project, runner) {
 }
 
 async function captureTmuxRunner(project, runner) {
-  return runTmux(project, runner, ["capture-pane", "-p", "-S", "-200", "-t", runner.session], 10000);
+  return runTmux(project, runner, ["capture-pane", "-p", "-t", runner.session], 10000);
 }
 
 async function pasteTextAndEnter(project, runner, text, timeoutMs = 10000) {
@@ -1770,6 +1772,8 @@ async function dismissStartupPrompts(project, runner) {
 async function openTmuxTerminal(project, runner) {
   const title = `RelayDesk ${project.name} ${runner.session}`;
   const entryCommand = String(runner.tmux?.entryCommand || "").trim();
+  const terminalProfile = String(runner.tmux?.terminalProfile || ((runner.tmux?.mode || "wsl") === "wsl" ? "Ubuntu" : "")).trim();
+  const terminalProfileArgs = terminalProfile ? ["-p", terminalProfile] : [];
   const status = await tmuxStatus(project, runner);
   if (status.state !== "running") {
     const started = await startTmuxRunner(project, runner);
@@ -1777,13 +1781,13 @@ async function openTmuxTerminal(project, runner) {
   }
   if (entryCommand) {
     const entry = terminalEntryArgs(runner, entryCommand);
-    const wtResult = await spawnDetached(["wt.exe", "new-tab", "--title", title, ...entry], runnerCwd(project, runner));
+    const wtResult = await spawnDetached(["wt.exe", "new-tab", ...terminalProfileArgs, "--title", title, ...entry], runnerCwd(project, runner));
     if (wtResult.ok) return wtResult;
     return spawnDetached(["cmd.exe", "/c", "start", title, ...entry], runnerCwd(project, runner));
   }
 
   const attach = tmuxTerminalAttachArgs(runner);
-  const wtResult = await spawnDetached(["wt.exe", "new-tab", "--title", title, ...attach], runnerCwd(project, runner));
+  const wtResult = await spawnDetached(["wt.exe", "new-tab", ...terminalProfileArgs, "--title", title, ...attach], runnerCwd(project, runner));
   if (wtResult.ok) return wtResult;
   return spawnDetached(["cmd.exe", "/c", "start", title, ...attach], runnerCwd(project, runner));
 }
