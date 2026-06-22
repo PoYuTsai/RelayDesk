@@ -1547,22 +1547,18 @@ function tmuxAttachArgs(runner) {
 
 function terminalEntryArgs(runner, command) {
   const mode = runner.tmux?.mode || "wsl";
-  if (mode === "wsl") return ["wsl.exe", "--exec", "bash", "-ic", `export TERM=xterm-256color; ${command}`];
+  if (mode === "wsl") return ["wsl.exe", "--exec", "env", "TERM=xterm-256color", "bash", "-ic", command];
   if (process.platform === "win32") return ["cmd.exe", "/d", "/s", "/c", `set TERM=xterm-256color&& ${command}`];
   return ["bash", "-lc", `export TERM=xterm-256color; ${command}`];
 }
 
-function tmuxAttachShellCommand(runner) {
-  return `export TERM=xterm-256color; exec tmux attach-session -t ${shellQuote(runner.session)}`;
-}
-
 function tmuxTerminalAttachArgs(runner) {
   const mode = runner.tmux?.mode || "wsl";
-  if (mode === "wsl") return ["wsl.exe", "--exec", "bash", "-lc", tmuxAttachShellCommand(runner)];
+  if (mode === "wsl") return ["wsl.exe", "--exec", "env", "TERM=xterm-256color", "tmux", "attach-session", "-t", runner.session];
   if (process.platform === "win32") {
     return ["cmd.exe", "/d", "/s", "/c", `set TERM=xterm-256color&& tmux attach-session -t ${windowsCommandLineQuote(runner.session)}`];
   }
-  return ["bash", "-lc", tmuxAttachShellCommand(runner)];
+  return ["env", "TERM=xterm-256color", "tmux", "attach-session", "-t", runner.session];
 }
 
 function runnerCwd(project, runner) {
