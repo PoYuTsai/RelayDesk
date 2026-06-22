@@ -1628,6 +1628,11 @@ async function dismissStartupPrompts(project, runner) {
 async function openTmuxTerminal(project, runner) {
   const title = `RelayDesk ${project.name} ${runner.session}`;
   const entryCommand = String(runner.tmux?.entryCommand || "").trim();
+  const status = await tmuxStatus(project, runner);
+  if (status.state !== "running") {
+    const started = await startTmuxRunner(project, runner);
+    if (!started.ok) return started;
+  }
   if (entryCommand) {
     const entry = terminalEntryArgs(runner, entryCommand);
     const wtResult = await spawnDetached(["wt.exe", "new-tab", "--title", title, ...entry], runnerCwd(project, runner));
@@ -1635,11 +1640,6 @@ async function openTmuxTerminal(project, runner) {
     return spawnDetached(["cmd.exe", "/c", "start", title, ...entry], runnerCwd(project, runner));
   }
 
-  const status = await tmuxStatus(project, runner);
-  if (status.state !== "running") {
-    const started = await startTmuxRunner(project, runner);
-    if (!started.ok) return started;
-  }
   const attach = tmuxTerminalAttachArgs(runner);
   const wtResult = await spawnDetached(["wt.exe", "new-tab", "--title", title, ...attach], runnerCwd(project, runner));
   if (wtResult.ok) return wtResult;
