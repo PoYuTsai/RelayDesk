@@ -258,8 +258,7 @@ button {
 .focus-agent-actions button,
 .focus-composer button,
 .focus-setup-card button,
-.focus-decision-compose button,
-.snapshot-relay-actions button {
+.focus-decision-compose button {
   height: 32px;
   display: inline-flex;
   align-items: center;
@@ -286,8 +285,7 @@ button {
 .focus-agent-actions button:disabled,
 .focus-composer button:disabled,
 .focus-setup-card button:disabled,
-.focus-decision-compose button:disabled,
-.snapshot-relay-actions button:disabled {
+.focus-decision-compose button:disabled {
   cursor: not-allowed;
   opacity: 0.55;
 }
@@ -1023,64 +1021,6 @@ button {
 .focus-composer > button {
   height: 42px;
   border-radius: 10px;
-}
-
-.snapshot-relay-backdrop {
-  position: fixed;
-  inset: 0;
-  z-index: 80;
-  display: grid;
-  place-items: center;
-  padding: 24px;
-  background: rgba(3, 7, 12, 0.56);
-  backdrop-filter: blur(8px);
-}
-
-.snapshot-relay-dialog {
-  width: min(460px, 100%);
-  padding: 18px;
-  color: var(--text);
-  background: rgba(17, 22, 29, 0.98);
-  border: 1px solid rgba(45, 212, 191, 0.28);
-  border-radius: 14px;
-  box-shadow: var(--shadow);
-}
-
-.snapshot-relay-dialog span,
-.snapshot-relay-dialog small {
-  color: var(--muted);
-  font-size: 12px;
-  font-weight: 750;
-}
-
-.snapshot-relay-dialog h2 {
-  margin: 4px 0 6px;
-  font-size: 20px;
-}
-
-.snapshot-relay-dialog p {
-  margin: 0;
-  color: var(--muted);
-  font-family: ui-monospace, SFMono-Regular, Consolas, "Liberation Mono", monospace;
-  font-size: 12px;
-}
-
-.snapshot-relay-actions {
-  display: grid;
-  grid-template-columns: 1fr 1fr 1fr;
-  gap: 8px;
-  margin: 16px 0 12px;
-}
-
-.snapshot-relay-actions button {
-  height: 40px;
-  border-radius: 10px;
-}
-
-.snapshot-relay-actions button:first-child {
-  color: #061411;
-  background: var(--accent);
-  border-color: rgba(45, 212, 191, 0.78);
 }
 
 .focus-console-card,

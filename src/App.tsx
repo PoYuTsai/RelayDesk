@@ -2255,7 +2255,6 @@ export function App() {
   const [consoleLastCaptureAt, setConsoleLastCaptureAt] = useState("");
   const [inspectorOpen, setInspectorOpen] = useState(false);
   const [runnerPaneOutputs, setRunnerPaneOutputs] = useState<Record<string, RunnerPaneOutput>>({});
-  const [snapshotRelayDraft, setSnapshotRelayDraft] = useState<SnapshotRelayDraft | null>(null);
   const [newProjectName, setNewProjectName] = useState("");
   const [newProjectPath, setNewProjectPath] = useState("");
   const [runnerType, setRunnerType] = useState("claude-code");
@@ -3569,15 +3568,14 @@ export function App() {
         decisionId: snapshotDecision.id,
         evidenceId: evidenceItem.id
       });
-      setSnapshotRelayDraft({
+      const relayDraft: SnapshotRelayDraft = {
         evidence: evidenceItem,
         decision: snapshotDecision,
         sourceRunnerId: runner.id,
         reviewerRunnerId,
         replyDraft
-      });
-      setLastRunnerOutput(`Snapshot saved. Choose where to send it next.\nWindows: ${saved.hostPath}\nWSL: ${saved.wslPath}`);
-      await refresh(activeProject);
+      };
+      await relaySnapshotDraft(relayDraft);
     } catch (error) {
       setLastRunnerOutput(`Snapshot failed: ${String(error)}`);
     } finally {
@@ -3585,62 +3583,47 @@ export function App() {
     }
   }
 
-  async function sendSnapshotRelayDraft(target: "reviewer" | "both" | "store") {
-    const draft = snapshotRelayDraft;
-    if (!draft) return;
-    if (target === "store") {
-      setSnapshotRelayDraft(null);
-      setLastRunnerOutput(`Snapshot saved in Evidence. No agent message was sent.`);
-      return;
-    }
-
+  async function relaySnapshotDraft(draft: SnapshotRelayDraft) {
     const sourceRunner = runnerById(draft.sourceRunnerId);
     const reviewerRunner = runnerById(draft.reviewerRunnerId);
-    const targetRunners = (target === "both" ? [sourceRunner, reviewerRunner] : [reviewerRunner])
-      .filter((runner): runner is Runner => Boolean(runner));
-    const uniqueTargets = Array.from(new Map(targetRunners.map((runner) => [runner.id, runner])).values());
-    const stoppedRunner = uniqueTargets.find((runner) => runner.state !== "running");
 
-    if (!uniqueTargets.length) {
+    if (!reviewerRunner) {
       setLastRunnerOutput("No reviewer runner is configured for this snapshot.");
       return;
     }
-    if (stoppedRunner) {
-      setLastRunnerOutput(`Start ${stoppedRunner.session} before sending the snapshot.`);
+    if (reviewerRunner.state !== "running") {
+      setLastRunnerOutput(`Start ${reviewerRunner.session} before sending the snapshot.`);
       return;
     }
 
-    setBusyRunner(`snapshot-relay:${target}`);
+    setBusyRunner(`snapshot-relay:${reviewerRunner.id}`);
     try {
-      await Promise.all(uniqueTargets.map((runner) => postRunnerAction(runner, "send", { text: draft.replyDraft })));
-      uniqueTargets.forEach((runner) => {
-        appendConsoleOutput(runner.id, `[RelayDesk snapshot -> ${runner.session}]\n${draft.replyDraft}`);
-        appendBusEvent({
-          kind: "review_request",
-          status: "sent",
-          title: `Snapshot sent to ${runner.session}`,
-          summary: draft.replyDraft,
-          sourceRunnerId: draft.sourceRunnerId,
-          sourceName: sourceRunner?.session || draft.decision.source,
-          targetRunnerId: runner.id,
-          targetName: runner.session,
-          decisionId: draft.decision.id,
-          evidenceId: draft.evidence.id
-        });
+      await postRunnerAction(reviewerRunner, "send", { text: draft.replyDraft });
+      appendConsoleOutput(reviewerRunner.id, `[RelayDesk snapshot -> ${reviewerRunner.session}]\n${draft.replyDraft}`);
+      appendBusEvent({
+        kind: "review_request",
+        status: "sent",
+        title: `Snapshot sent to ${reviewerRunner.session}`,
+        summary: draft.replyDraft,
+        sourceRunnerId: draft.sourceRunnerId,
+        sourceName: sourceRunner?.session || draft.decision.source,
+        targetRunnerId: reviewerRunner.id,
+        targetName: reviewerRunner.session,
+        decisionId: draft.decision.id,
+        evidenceId: draft.evidence.id
       });
       updateDecision(draft.decision.id, {
         status: "reviewing",
         sentAt: new Date().toISOString()
       });
       await new Promise<void>((resolve) => window.setTimeout(resolve, 850));
-      await Promise.all(uniqueTargets.map((runner) => captureConsole(runner, { mode: "peek", silent: true })));
-      setSnapshotRelayDraft(null);
-      setLastRunnerOutput(`Snapshot sent to ${uniqueTargets.map((runner) => runner.session).join(", ")}.`);
+      await captureConsole(reviewerRunner, { mode: "peek", silent: true });
+      setLastRunnerOutput(`Snapshot sent to ${reviewerRunner.session}.`);
       await refresh(activeProject);
     } catch (error) {
       const message = `Snapshot relay failed: ${String(error)}`;
       setLastRunnerOutput(message);
-      replaceConsoleOutput(uniqueTargets[0]?.id || draft.sourceRunnerId, message, "error");
+      replaceConsoleOutput(reviewerRunner.id, message, "error");
     } finally {
       setBusyRunner(null);
     }
@@ -5253,52 +5236,6 @@ export function App() {
           </div>
         </details>
       </aside>
-      {snapshotRelayDraft && (() => {
-        const sourceRunner = runnerById(snapshotRelayDraft.sourceRunnerId);
-        const reviewerRunner = runnerById(snapshotRelayDraft.reviewerRunnerId);
-        const reviewerReady = Boolean(reviewerRunner && reviewerRunner.state === "running");
-        const bothReady = Boolean(sourceRunner && sourceRunner.state === "running" && reviewerReady);
-        return (
-          <div className="snapshot-relay-backdrop" role="presentation" onClick={() => setSnapshotRelayDraft(null)}>
-            <section
-              className="snapshot-relay-dialog"
-              role="dialog"
-              aria-modal="true"
-              aria-labelledby="snapshot-relay-title"
-              onClick={(event) => event.stopPropagation()}
-            >
-              <div>
-                <span>{lang === "zh-TW" ? "已截取對話窗" : "Pane captured"}</span>
-                <h2 id="snapshot-relay-title">{lang === "zh-TW" ? "要把這張截圖交給誰？" : "Who should receive this screenshot?"}</h2>
-                <p>
-                  {sourceRunner?.session || snapshotRelayDraft.decision.source}
-                  {" -> "}
-                  {reviewerRunner?.session || (lang === "zh-TW" ? "對方 agent" : "reviewer")}
-                </p>
-              </div>
-              <div className="snapshot-relay-actions">
-                <button disabled={!!busyRunner || !reviewerReady} onClick={() => void sendSnapshotRelayDraft("reviewer")}>
-                  <Send size={14} />
-                  {lang === "zh-TW" ? "送給對方" : "Send to other agent"}
-                </button>
-                <button disabled={!!busyRunner || !bothReady} onClick={() => void sendSnapshotRelayDraft("both")}>
-                  <Workflow size={14} />
-                  {lang === "zh-TW" ? "送給兩邊" : "Send to both"}
-                </button>
-                <button onClick={() => void sendSnapshotRelayDraft("store")}>
-                  <Archive size={14} />
-                  {lang === "zh-TW" ? "只存證據" : "Store only"}
-                </button>
-              </div>
-              <small>
-                {lang === "zh-TW"
-                  ? "不會截整個螢幕；只會保存你剛按的那個 agent 對話窗。"
-                  : "Only the selected agent pane is saved, not the whole screen."}
-              </small>
-            </section>
-          </div>
-        );
-      })()}
     </main>
   );
 
