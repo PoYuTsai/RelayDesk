@@ -216,13 +216,50 @@ type RelaySession = {
   state: RelaySessionState;
 };
 
+type SlashRisk = "safe" | "context" | "destructive" | "custom";
+
+type SlashCommandPreset = {
+  id: string;
+  label: string;
+  command: string;
+  hint: string;
+  risk: SlashRisk;
+  captureDelayMs: number;
+  aliases?: string[];
+};
+
 const steps = ["Discuss", "Synthesize", "Build", "Review", "Verify"];
 
-const slashCommandPresets = [
-  { id: "help", label: "/help", command: "/help", hint: "Show commands available in the selected CLI" },
-  { id: "clear", label: "/clear", command: "/clear", hint: "Start fresh or clear context, depending on the CLI" },
-  { id: "compact", label: "/compact", command: "/compact", hint: "Summarize long context where supported" }
+const slashCommandPresets: SlashCommandPreset[] = [
+  { id: "help", label: "/help", command: "/help", hint: "Show commands available in the selected CLI", risk: "safe", captureDelayMs: 650 },
+  { id: "status", label: "/status", command: "/status", hint: "Read active CLI status and usage where supported", risk: "safe", captureDelayMs: 650 },
+  { id: "compact", label: "/compact", command: "/compact", hint: "Summarize or rotate long context where supported", risk: "context", captureDelayMs: 1100 },
+  { id: "resume", label: "/resume", command: "/resume", hint: "Resume a previous agent session where supported", risk: "context", captureDelayMs: 1100 },
+  { id: "clear", label: "/clear", command: "/clear", hint: "Clear or restart conversation context, depending on the CLI", risk: "destructive", captureDelayMs: 1300 }
 ];
+
+const slashRiskCopy: Record<SlashRisk, { label: string; description: string }> = {
+  safe: {
+    label: "Safe read",
+    description: "Usually opens help, status, or another read-only CLI surface."
+  },
+  context: {
+    label: "Context change",
+    description: "May summarize, resume, or reshape the active agent context."
+  },
+  destructive: {
+    label: "State reset",
+    description: "Can clear, delete, exit, or start over in the live CLI session."
+  },
+  custom: {
+    label: "Custom",
+    description: "RelayDesk will pass it through exactly; behavior depends on your agent setup."
+  }
+};
+
+const contextSlashCommands = new Set(["/compact", "/resume", "/continue", "/handoff", "/round", "/recap", "/summarize", "/summary"]);
+const destructiveSlashCommands = new Set(["/clear", "/new", "/delete", "/archive", "/quit", "/exit", "/logout", "/stop"]);
+const safeSlashCommands = new Set(["/", "/help", "/status", "/usage", "/diff", "/doctor", "/context", "/cost", "/stats"]);
 
 const doctorPriorityIds = [
   "runner-session-unique",
@@ -344,6 +381,76 @@ async function getJson<T>(url: string): Promise<T> {
 
 function cx(...parts: Array<string | false | null | undefined>) {
   return parts.filter(Boolean).join(" ");
+}
+
+function normalizeSlashCommand(value: string) {
+  const trimmed = value.trim();
+  if (!trimmed) return "";
+  return trimmed.startsWith("/") ? trimmed : `/${trimmed}`;
+}
+
+function slashCommandName(value: string) {
+  const command = normalizeSlashCommand(value);
+  return command.split(/\s+/)[0]?.toLowerCase() || "";
+}
+
+function slashCommandMeta(value: string): SlashCommandPreset {
+  const name = slashCommandName(value);
+  const preset = slashCommandPresets.find((item) => item.command === name || item.aliases?.includes(name));
+  if (preset) return preset;
+  if (destructiveSlashCommands.has(name)) {
+    return {
+      id: `dynamic-${name}`,
+      label: name,
+      command: name,
+      hint: "State-changing CLI command",
+      risk: "destructive",
+      captureDelayMs: 1300
+    };
+  }
+  if (contextSlashCommands.has(name)) {
+    return {
+      id: `dynamic-${name}`,
+      label: name,
+      command: name,
+      hint: "Context-changing CLI command",
+      risk: "context",
+      captureDelayMs: 1100
+    };
+  }
+  if (safeSlashCommands.has(name)) {
+    return {
+      id: `dynamic-${name}`,
+      label: name,
+      command: name,
+      hint: "Read-only CLI command",
+      risk: "safe",
+      captureDelayMs: 650
+    };
+  }
+  return {
+    id: `custom-${clientId(name || "slash")}`,
+    label: name || "/",
+    command: name || "/",
+    hint: "Custom slash command",
+    risk: "custom",
+    captureDelayMs: 900
+  };
+}
+
+function formatSlashDelay(ms: number) {
+  return `${(ms / 1000).toFixed(ms % 1000 === 0 ? 0 : 1)}s`;
+}
+
+function slashConfirmMessage(command: string, runner: Runner, meta: SlashCommandPreset) {
+  const risk = slashRiskCopy[meta.risk];
+  return [
+    `Send "${command}" to ${runner.session}?`,
+    "",
+    `${risk.label}: ${risk.description}`,
+    `RelayDesk will auto-peek the pane after ${formatSlashDelay(meta.captureDelayMs)}.`,
+    "Confirm the agent is waiting at a prompt before sending."
+  ].join("\n");
 }
 
 function cleanCaptureLine(line: string) {
@@ -689,6 +796,12 @@ export function App() {
   const commandRunner = useMemo(() => {
     return runners.find((runner) => runner.id === commandRunnerId) || runners.find((runner) => runner.state === "running") || runners[0];
   }, [runners, commandRunnerId]);
+
+  const slashMeta = useMemo(() => slashCommandMeta(slashCommand), [slashCommand]);
+
+  const consoleSlashMeta = useMemo(() => {
+    return consoleInput.trim().startsWith("/") ? slashCommandMeta(consoleInput) : null;
+  }, [consoleInput]);
 
   const writerRunner = useMemo(() => {
     return runners.find((runner) => runner.id === writerRunnerId) || runners.find((runner) => runner.id === "claude-code") || runners[0];
@@ -1178,9 +1291,64 @@ export function App() {
     }
   }
 
+  async function sendSlashCommand(value = slashCommand, options: { source?: "console" | "panel" } = {}) {
+    const command = normalizeSlashCommand(value);
+    if (!command) return;
+    if (!commandRunner) {
+      const message = "No runner is configured for this project.";
+      setConsoleOutput(message);
+      setLastRunnerOutput(message);
+      return;
+    }
+    if (commandRunner.state !== "running") {
+      const message = `Start ${commandRunner.session} before sending slash commands.`;
+      setConsoleOutput(message);
+      setLastRunnerOutput(message);
+      return;
+    }
+
+    const meta = slashCommandMeta(command);
+    if (meta.risk !== "safe") {
+      const ok = window.confirm(slashConfirmMessage(command, commandRunner, meta));
+      if (!ok) {
+        const message = `Slash command canceled: ${command}`;
+        setLastRunnerOutput(message);
+        return;
+      }
+    }
+
+    setBusyRunner(`${commandRunner.id}:slash-send`);
+    try {
+      await postRunnerAction(commandRunner, "send", { text: command });
+      setSlashCommand(command);
+      if (options.source === "console") setConsoleInput("");
+      const pendingMessage = [
+        `[RelayDesk slash -> ${commandRunner.session}]`,
+        command,
+        "",
+        `${slashRiskCopy[meta.risk].label}. Auto-peek in ${formatSlashDelay(meta.captureDelayMs)}.`
+      ].join("\n");
+      setConsoleOutput((current) => `${current ? `${current}\n\n` : ""}${pendingMessage}`);
+      setLastRunnerOutput(pendingMessage);
+      await new Promise<void>((resolve) => window.setTimeout(resolve, meta.captureDelayMs));
+      await captureConsole(commandRunner, { mode: "peek", silent: true });
+      await refresh(activeProject);
+    } catch (error) {
+      const message = `Slash command failed: ${String(error)}`;
+      setConsoleOutput(message);
+      setLastRunnerOutput(message);
+    } finally {
+      setBusyRunner(null);
+    }
+  }
+
   async function sendConsoleInput(value = consoleInput) {
     const text = value.trim();
     if (!text) return;
+    if (text.startsWith("/")) {
+      await sendSlashCommand(text, { source: "console" });
+      return;
+    }
     if (!commandRunner) {
       const message = "No runner is configured for this project.";
       setConsoleOutput(message);
@@ -1198,7 +1366,6 @@ export function App() {
     try {
       await postRunnerAction(commandRunner, "send", { text });
       setConsoleInput("");
-      setSlashCommand(text.startsWith("/") ? text : slashCommand);
       setConsoleOutput((current) => `${current ? `${current}\n\n` : ""}[RelayDesk sent to ${commandRunner.session}]\n${text}`);
       await new Promise<void>((resolve) => window.setTimeout(resolve, 650));
       await captureConsole(commandRunner, { mode: "peek", silent: true });
@@ -1745,24 +1912,6 @@ export function App() {
     await postConfigAction({ action: "delete-runner", projectId: activeProject.id, runnerId: runner.id }, activeProject.id);
   }
 
-  async function sendCliCommand(value = slashCommand) {
-    const command = value.trim();
-    if (!command) return;
-    if (!commandRunner) {
-      setLastRunnerOutput("No runner is configured for this project.");
-      return;
-    }
-    if (commandRunner.state !== "running") {
-      setLastRunnerOutput(`Start ${commandRunner.session} before sending CLI commands.`);
-      return;
-    }
-    setSlashCommand(command);
-    await runRunner(commandRunner, "send", {
-      text: command,
-      confirmMessage: `Send "${command}" to ${commandRunner.session}? Make sure the agent is waiting at its prompt.`
-    });
-  }
-
   if (bootError) return <div className="loading-shell error">{bootError}</div>;
   if (!projects.length) return <AppShellSkeleton />;
 
@@ -2106,7 +2255,10 @@ export function App() {
               value={consoleInput}
               onChange={(event) => setConsoleInput(event.target.value)}
               onKeyDown={(event) => {
-                if (event.key === "Enter") void sendConsoleInput();
+                if (event.key === "Enter") {
+                  event.preventDefault();
+                  void sendConsoleInput();
+                }
               }}
               placeholder="Type a task, decision reply, /help, /clear, /compact..."
             />
@@ -2115,13 +2267,23 @@ export function App() {
               Send
             </button>
           </div>
+          {consoleSlashMeta ? (
+            <div className="slash-command-advice">
+              <span className={cx("slash-risk", consoleSlashMeta.risk)}>{slashRiskCopy[consoleSlashMeta.risk].label}</span>
+              {" "}
+              <span>
+                {slashRiskCopy[consoleSlashMeta.risk].description} Auto-peek after {formatSlashDelay(consoleSlashMeta.captureDelayMs)}.
+              </span>
+            </div>
+          ) : null}
           <div className="console-presets">
             {slashCommandPresets.map((preset) => (
               <button
                 key={`console-${preset.id}`}
+                className={cx("slash-preset", preset.risk)}
                 disabled={!!busyRunner || commandRunner?.state !== "running"}
                 title={preset.hint}
-                onClick={() => void sendConsoleInput(preset.command)}
+                onClick={() => void sendSlashCommand(preset.command, { source: "console" })}
               >
                 {preset.label}
               </button>
@@ -2704,7 +2866,7 @@ export function App() {
             <div className="slash-head">
               <div>
                 <strong>Slash command</strong>
-                <span>Send directly into the live tmux prompt.</span>
+                <span>Send through tmux, confirm risky commands, then auto-peek.</span>
               </div>
               <select value={commandRunner?.id || ""} onChange={(event) => setCommandRunnerId(event.target.value)}>
                 {runners.map((runner) => (
@@ -2714,13 +2876,21 @@ export function App() {
                 ))}
               </select>
             </div>
+            <div className="slash-meta-row">
+              <span className={cx("slash-risk", slashMeta.risk)}>{slashRiskCopy[slashMeta.risk].label}</span>
+              {" "}
+              <span>
+                {slashRiskCopy[slashMeta.risk].description} Auto-peek after {formatSlashDelay(slashMeta.captureDelayMs)}.
+              </span>
+            </div>
             <div className="slash-presets">
               {slashCommandPresets.map((preset) => (
                 <button
                   key={preset.id}
+                  className={cx("slash-preset", preset.risk)}
                   disabled={!!busyRunner || commandRunner?.state !== "running"}
                   title={preset.hint}
-                  onClick={() => void sendCliCommand(preset.command)}
+                  onClick={() => void sendSlashCommand(preset.command, { source: "panel" })}
                 >
                   {preset.label}
                 </button>
@@ -2731,16 +2901,19 @@ export function App() {
                 value={slashCommand}
                 onChange={(event) => setSlashCommand(event.target.value)}
                 onKeyDown={(event) => {
-                  if (event.key === "Enter") void sendCliCommand();
+                  if (event.key === "Enter") {
+                    event.preventDefault();
+                    void sendSlashCommand(slashCommand, { source: "panel" });
+                  }
                 }}
                 placeholder="/help, /clear, /compact..."
               />
-              <button disabled={!!busyRunner || commandRunner?.state !== "running" || !slashCommand.trim()} onClick={() => void sendCliCommand()}>
+              <button disabled={!!busyRunner || commandRunner?.state !== "running" || !slashCommand.trim()} onClick={() => void sendSlashCommand(slashCommand, { source: "panel" })}>
                 <Send size={13} />
                 Send
               </button>
             </div>
-            <p>Use Capture first if you are not sure the agent is waiting at an input prompt.</p>
+            <p>Use Capture first if you are not sure the agent is waiting at an input prompt. Custom commands are passed through exactly.</p>
           </div>
           <pre className="runner-output">{lastRunnerOutput || "Runner output appears here."}</pre>
         </section>

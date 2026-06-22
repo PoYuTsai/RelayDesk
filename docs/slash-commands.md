@@ -9,8 +9,27 @@ Claude Code, Codex CLI, or whichever CLI is running in that pane.
 1. Select the runner in Session Console or Runner Ops.
 2. Click Capture Pane if you are not sure whether the CLI is waiting at a prompt.
 3. Type the slash command, for example `/help` or `/compact`.
-4. Press Send.
-5. Capture again to confirm the command was accepted.
+4. Check the RelayDesk risk label.
+5. Press Send.
+6. Confirm the prompt when RelayDesk marks the command as context-changing,
+   destructive, or custom.
+7. Read the automatic peek result after the command is sent.
+
+RelayDesk classifies slash commands before sending:
+
+- Safe read: common read-only commands such as `/help`, `/status`, `/usage`, or
+  `/diff`. These send without an extra confirmation prompt.
+- Context change: commands such as `/compact`, `/resume`, `/round`, or
+  `/handoff` that may rotate, summarize, or resume context.
+- State reset: commands such as `/clear`, `/new`, `/delete`, `/archive`,
+  `/quit`, or `/exit` that can reset or leave the live CLI session.
+- Custom: any slash command RelayDesk does not recognize. It is still passed
+  through exactly, but confirmation is required because behavior depends on your
+  local agent setup.
+
+After any slash command is sent, RelayDesk waits briefly and peeks the selected
+tmux pane. This readback is not a full formal Capture, but it gives immediate
+feedback that the CLI saw the command.
 
 Do not send `/clear`, `/new`, `/delete`, `/archive`, `/quit`, `/exit`, or other
 state-changing commands while the agent is still executing a task.

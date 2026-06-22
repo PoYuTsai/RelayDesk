@@ -160,14 +160,23 @@ Session Console is the main daily surface for the live tmux pane.
 Auto refresh uses a non-counting peek action. Formal Capture still updates local
 activity metrics and can create Decision Inbox items.
 
+If the input starts with `/`, RelayDesk treats it as a slash command. It shows
+the command risk level, asks for confirmation when the command can change
+context or reset state, sends the exact text to tmux, then auto-peeks the pane.
+
 ## 10. Send slash commands
 
-In Runner Ops, use Slash command for live CLI commands such as `/help`,
-`/clear`, and `/compact`.
+In Session Console or Runner Ops, use Slash command for live CLI commands such
+as `/help`, `/clear`, and `/compact`.
 
 RelayDesk sends the command to the selected tmux session and presses Enter.
 This is useful when Claude Code or another CLI agent needs context rotation,
 clear, resume, or similar command-mode actions.
+
+RelayDesk labels each slash command as Safe read, Context change, State reset,
+or Custom. Context-changing, destructive, and custom commands ask for
+confirmation first. After sending, RelayDesk waits briefly and peeks the pane so
+you can see the immediate CLI response without opening tmux manually.
 
 RelayDesk does not implement slash commands itself. Official commands differ by
 agent and version:

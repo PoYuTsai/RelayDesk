@@ -170,6 +170,10 @@ Session Console is the main in-browser surface for live tmux interaction.
 Commands are sent to the real tmux session and press Enter. Use the visible pane
 state to confirm the agent is waiting at a prompt before sending input.
 
+Slash commands entered here use the same guarded passthrough as Runner Ops:
+RelayDesk classifies the command, asks for confirmation before context-changing
+or destructive commands, sends the exact text to tmux, then auto-peeks the pane.
+
 ## Why `rc-*` Session Names?
 
 `rc` is only a naming convention in the example config. It can mean "remote
@@ -198,6 +202,11 @@ Example naming:
 
 Runner Ops includes a Slash command panel. RelayDesk does not implement these
 commands itself; it sends the text into the selected live CLI session.
+
+The panel labels commands as Safe read, Context change, State reset, or Custom.
+Context-changing, destructive, and unknown custom commands ask for confirmation
+before RelayDesk presses Enter. After any slash command is sent, RelayDesk waits
+briefly and peeks the tmux pane so you can see the CLI's immediate response.
 
 Official commands depend on the agent and version. Use `/help` or type `/` in
 the target CLI to see what is available in your environment.

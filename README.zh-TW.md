@@ -165,6 +165,8 @@ Session Console 是日常操作 live tmux 的主入口。
 
 送出時會真的打進 tmux session 並按 Enter。送之前先看 pane 狀態，確認 agent 已回到可輸入 prompt。
 
+在這裡輸入 slash command 會走跟 Runner Ops 一樣的保護流程：RelayDesk 會先標示風險，對會改變上下文、重置狀態、或未知自訂指令跳確認，送出後再自動 peek 一次 tmux pane。
+
 ## 為什麼範例叫 `rc-*`？
 
 `rc` 只是範例命名慣例，可以理解成 remote control 或 RelayDesk-controlled；它不是 tmux 的必要功能，也不是綁定某個人的專案名稱。
@@ -186,6 +188,8 @@ Session Console 是日常操作 live tmux 的主入口。
 ## Slash Commands
 
 Runner Ops 裡有 Slash command 面板。RelayDesk 不會自己實作這些指令，只會把文字送進目前選到的 live CLI session。
+
+面板會把指令標成 Safe read、Context change、State reset、Custom。Context change、State reset、Custom 會先跳確認，確認後才真的送進 tmux 並按 Enter；送完會短暫等待，然後自動 peek 一次 pane，讓你確認 CLI 是否有接到。
 
 官方指令會依 agent 與版本不同而變。最準的方法是在目標 CLI 裡輸入 `/` 或 `/help`，看你當下環境支援哪些命令。
 

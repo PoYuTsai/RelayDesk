@@ -882,6 +882,68 @@ h2 {
   margin-top: 9px;
 }
 
+.slash-command-advice,
+.slash-meta-row {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 8px;
+  color: var(--muted);
+  font-size: 11px;
+  line-height: 1.4;
+}
+
+.slash-command-advice span:last-child,
+.slash-meta-row span:last-child {
+  min-width: 0;
+}
+
+.slash-risk {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 22px;
+  padding: 0 8px;
+  border-radius: 999px;
+  border: 1px solid transparent;
+  font-size: 11px;
+  font-weight: 900;
+  white-space: nowrap;
+}
+
+.slash-risk.safe {
+  color: #9ef3d4;
+  background: rgba(16, 185, 129, 0.13);
+  border-color: rgba(16, 185, 129, 0.28);
+}
+
+.slash-risk.context {
+  color: #9bd4ff;
+  background: rgba(59, 130, 246, 0.13);
+  border-color: rgba(59, 130, 246, 0.3);
+}
+
+.slash-risk.destructive {
+  color: #ffbac8;
+  background: rgba(244, 63, 94, 0.13);
+  border-color: rgba(244, 63, 94, 0.3);
+}
+
+.slash-risk.custom {
+  color: #f8d58a;
+  background: rgba(245, 158, 11, 0.13);
+  border-color: rgba(245, 158, 11, 0.32);
+}
+
+.slash-preset.context {
+  border-color: rgba(59, 130, 246, 0.24);
+}
+
+.slash-preset.destructive {
+  border-color: rgba(244, 63, 94, 0.28);
+}
+
 .decision-inbox {
   margin-top: 16px;
   padding: 16px;
@@ -2082,7 +2144,7 @@ pre {
 
 .slash-presets {
   display: grid;
-  grid-template-columns: repeat(3, 1fr);
+  grid-template-columns: repeat(auto-fit, minmax(72px, 1fr));
   gap: 7px;
   margin-top: 11px;
 }
