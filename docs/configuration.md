@@ -16,6 +16,12 @@ Useful environment variables:
 | `RELAYDESK_PORT` | `8791` | API/static server port. |
 | `RELAYDESK_DATA_DIR` | repo root | Runtime data directory. |
 | `RELAYDESK_STATIC_DIR` | `dist` | Static UI build directory served by the API server. |
+| `RELAYDESK_CLAUDE_PATH` | PATH lookup | Preferred Claude Code binary for Doctor parity checks. |
+| `RELAYDESK_CODEX_PATH` | Codex Desktop config, then PATH lookup | Preferred Codex binary for Doctor parity checks. |
+
+`RELAYDESK_CODEX_PATH` does not rewrite your runner command. It tells Doctor
+which Codex binary to evaluate first. If you want a tmux runner to use that same
+binary, put the explicit path in `tmux.startCommand`.
 
 ## Project shape
 

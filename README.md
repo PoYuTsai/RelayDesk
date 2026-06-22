@@ -116,6 +116,11 @@ Open [http://127.0.0.1:5177](http://127.0.0.1:5177).
 Then check the Doctor panel in the right sidebar. It should show whether your
 config, project paths, tmux, Claude Code, and Codex CLI are ready.
 
+Doctor also shows agent parity hints. This matters because `codex` on PATH,
+`codex` inside WSL, and the Codex Desktop bundled binary can be different
+versions. Use the binary Doctor marks as `gpt-5.5 capable` when you want the
+closest Codex Desktop parity.
+
 ## Basic Workflow
 
 1. Select a project.
@@ -325,6 +330,10 @@ Codex CLI runner with startup prompt handling:
   }
 }
 ```
+
+If Doctor reports that the WSL or PATH Codex CLI is older than the Desktop
+bundled Codex CLI, update that CLI or explicitly point the runner command at the
+newer binary before treating RelayDesk as a desktop-quality Codex runbox.
 
 For destructive actions such as Stop and Restart, the UI asks for confirmation
 before the backend runs the allowlisted command.

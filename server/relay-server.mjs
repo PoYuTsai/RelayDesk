@@ -4,6 +4,7 @@ import { existsSync } from "node:fs";
 import { dirname, extname, join, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 import { spawn } from "node:child_process";
+import { homedir } from "node:os";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const root = resolve(here, "..");
@@ -11,6 +12,7 @@ const dataRoot = resolve(process.env.RELAYDESK_DATA_DIR || root);
 const staticRoot = resolve(process.env.RELAYDESK_STATIC_DIR || join(root, "dist"));
 const port = Number(process.env.RELAYDESK_PORT || 8791);
 const host = process.env.RELAYDESK_HOST || "127.0.0.1";
+const minCodexGpt55Version = "0.141.0";
 
 const defaultConfig = {
   projects: [
@@ -567,6 +569,16 @@ function hasRunnerCommand(config, command) {
   );
 }
 
+function usesPlainWslCodex(config) {
+  return (config.projects || []).some((project) =>
+    (project.runners || []).some((runner) => {
+      if (runner.kind !== "tmux" || (runner.tmux?.mode || "wsl") !== "wsl") return false;
+      const command = String(runner.tmux?.startCommand || "");
+      return /(^|[\s'"])codex(?=\s|$)/i.test(command);
+    })
+  );
+}
+
 function runnerSessionUniqueness(config) {
   const seen = new Map();
   const duplicates = [];
@@ -630,6 +642,267 @@ async function tmuxSmokeCheck(id, label, mode, fix = "") {
   );
 }
 
+function firstTomlString(text, key) {
+  const escaped = key.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const match = text.match(new RegExp(`^\\s*${escaped}\\s*=\\s*["']([^"']+)["']`, "m"));
+  return match?.[1] || "";
+}
+
+async function readCodexUserConfig() {
+  const path = join(homedir(), ".codex", "config.toml");
+  try {
+    const text = await readFile(path, "utf8");
+    return {
+      path,
+      exists: true,
+      model: firstTomlString(text, "model"),
+      serviceTier: firstTomlString(text, "service_tier"),
+      desktopCliPath: firstTomlString(text, "CODEX_CLI_PATH")
+    };
+  } catch {
+    return { path, exists: false, model: "", serviceTier: "", desktopCliPath: "" };
+  }
+}
+
+function parseCodexVersion(output) {
+  return String(output || "").match(/codex-cli\s+([0-9]+(?:\.[0-9]+){1,2}(?:[-+][^\s]+)?)/i)?.[1] || "";
+}
+
+function parseClaudeVersion(output) {
+  return String(output || "").match(/([0-9]+(?:\.[0-9]+){1,2})/)?.[1] || "";
+}
+
+function semverParts(version) {
+  return String(version || "")
+    .split(/[+-]/)[0]
+    .split(".")
+    .map((part) => Number(part || 0))
+    .concat([0, 0, 0])
+    .slice(0, 3);
+}
+
+function semverGte(version, minimum) {
+  const current = semverParts(version);
+  const target = semverParts(minimum);
+  for (let index = 0; index < 3; index += 1) {
+    if (current[index] > target[index]) return true;
+    if (current[index] < target[index]) return false;
+  }
+  return true;
+}
+
+function normalizeCliPath(value) {
+  return String(value || "")
+    .replace(/^\\\\\?\\/, "")
+    .replace(/\//g, "\\")
+    .toLowerCase();
+}
+
+function sameCliPath(left, right) {
+  return Boolean(left && right && normalizeCliPath(left) === normalizeCliPath(right));
+}
+
+function addCandidate(candidates, path, source) {
+  const value = String(path || "").trim();
+  if (!value) return;
+  if (candidates.some((candidate) => sameCliPath(candidate.path, value))) return;
+  candidates.push({ path: value, source });
+}
+
+async function whereCandidates(command, source) {
+  if (process.platform !== "win32") return [];
+  const result = await runCommand(["where.exe", command], root, 8000);
+  if (!result.ok) return [];
+  return result.stdout
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter(Boolean)
+    .map((path) => ({ path, source }));
+}
+
+async function testCodexCandidate(candidate) {
+  const result = await runCommand([candidate.path, "--version"], root, 10000);
+  const output = result.stdout || result.stderr;
+  const version = parseCodexVersion(output);
+  return {
+    ...candidate,
+    ok: result.ok && Boolean(version),
+    version,
+    supportsGpt55: Boolean(version && semverGte(version, minCodexGpt55Version)),
+    output,
+    error: result.ok ? "" : output
+  };
+}
+
+async function detectCodexCli() {
+  const config = await readCodexUserConfig();
+  const candidates = [];
+  addCandidate(candidates, process.env.RELAYDESK_CODEX_PATH, "RELAYDESK_CODEX_PATH");
+  addCandidate(candidates, config.desktopCliPath, "Codex desktop config");
+  for (const candidate of await whereCandidates("codex.cmd", "PATH codex.cmd")) addCandidate(candidates, candidate.path, candidate.source);
+  for (const candidate of await whereCandidates("codex.exe", "PATH codex.exe")) addCandidate(candidates, candidate.path, candidate.source);
+
+  if (process.platform !== "win32") {
+    addCandidate(candidates, process.env.RELAYDESK_CODEX_PATH || "codex", "PATH codex");
+  }
+
+  const tested = [];
+  for (const candidate of candidates) tested.push(await testCodexCandidate(candidate));
+  const selected = tested.find((candidate) => candidate.ok && candidate.supportsGpt55) || tested.find((candidate) => candidate.ok) || null;
+  const pathDefault = tested.find((candidate) => candidate.source.startsWith("PATH") && candidate.ok) || null;
+  const help = selected ? await runCommand([selected.path, "exec", "--help"], root, 10000) : null;
+
+  return {
+    config,
+    candidates: tested,
+    selected,
+    pathDefault,
+    execJson: Boolean(help?.ok && /--json\b/.test(`${help.stdout}\n${help.stderr}`)),
+    execHelp: help ? help.stdout || help.stderr : ""
+  };
+}
+
+async function detectClaudeCli() {
+  const candidates = [];
+  addCandidate(candidates, process.env.RELAYDESK_CLAUDE_PATH, "RELAYDESK_CLAUDE_PATH");
+  for (const candidate of await whereCandidates("claude.cmd", "PATH claude.cmd")) addCandidate(candidates, candidate.path, candidate.source);
+  if (process.platform !== "win32") addCandidate(candidates, process.env.RELAYDESK_CLAUDE_PATH || "claude", "PATH claude");
+
+  const tested = [];
+  for (const candidate of candidates) {
+    const result = await runCommand([candidate.path, "--version"], root, 10000);
+    const output = result.stdout || result.stderr;
+    tested.push({
+      ...candidate,
+      ok: result.ok,
+      version: parseClaudeVersion(output),
+      output,
+      error: result.ok ? "" : output
+    });
+  }
+  const selected = tested.find((candidate) => candidate.ok) || null;
+  const help = selected ? await runCommand([selected.path, "--help"], root, 10000) : null;
+  const helpText = `${help?.stdout || ""}\n${help?.stderr || ""}`;
+
+  return {
+    candidates: tested,
+    selected,
+    supportsEffort: Boolean(help?.ok && /--effort\b/.test(helpText)),
+    supportsStreamJson: Boolean(help?.ok && /stream-json/.test(helpText)),
+    help: helpText
+  };
+}
+
+function cliDetail(candidate) {
+  if (!candidate) return "No CLI candidate found.";
+  return `${candidate.version || "unknown version"} via ${candidate.source}\n${candidate.path}`;
+}
+
+async function agentParityChecks(config) {
+  const checks = [];
+  const [codex, claude] = await Promise.all([detectCodexCli(), detectClaudeCli()]);
+  const needsCodex = hasRunnerCommand(config, "codex");
+  const needsClaude = hasRunnerCommand(config, "claude");
+
+  checks.push(
+    check(
+      "claude-selected-cli",
+      "Claude selected CLI",
+      Boolean(claude.selected),
+      cliDetail(claude.selected),
+      "Install Claude Code, login, or set RELAYDESK_CLAUDE_PATH.",
+      needsClaude ? "fail" : "warn"
+    )
+  );
+  if (claude.selected) {
+    checks.push(
+      check(
+        "claude-stream-json",
+        "Claude stream-json support",
+        claude.supportsStreamJson,
+        claude.supportsStreamJson ? "Claude Code can emit stream-json events for RelayDesk." : "Selected Claude CLI help did not expose stream-json.",
+        "Upgrade Claude Code if stream-json is missing.",
+        "warn"
+      )
+    );
+    checks.push(
+      check(
+        "claude-effort-mode",
+        "Claude effort flag",
+        claude.supportsEffort,
+        claude.supportsEffort ? "Claude Code exposes --effort for high-reasoning presets." : "Selected Claude CLI help did not expose --effort.",
+        "Upgrade Claude Code if you need Opus + max effort parity.",
+        "warn"
+      )
+    );
+  }
+
+  checks.push(
+    check(
+      "codex-selected-cli",
+      "Codex selected CLI",
+      Boolean(codex.selected),
+      cliDetail(codex.selected),
+      "Install/upgrade Codex CLI or point RELAYDESK_CODEX_PATH at the Codex Desktop bundled binary.",
+      needsCodex ? "fail" : "warn"
+    )
+  );
+  if (codex.selected) {
+    checks.push(
+      check(
+        "codex-gpt-55",
+        "Codex gpt-5.5 capable",
+        codex.selected.supportsGpt55,
+        `${codex.selected.version || "unknown"} selected; known minimum for this workflow is ${minCodexGpt55Version}.`,
+        "Upgrade Codex CLI, or use the Codex Desktop bundled binary recorded in ~/.codex/config.toml.",
+        "warn"
+      )
+    );
+    checks.push(
+      check(
+        "codex-json-events",
+        "Codex JSON event stream",
+        codex.execJson,
+        codex.execJson ? "codex exec --help exposes --json." : "Selected Codex CLI did not expose codex exec --json.",
+        "Upgrade Codex CLI before using RelayDesk timeline rendering.",
+        "warn"
+      )
+    );
+    checks.push(
+      check(
+        "codex-path-shadow",
+        "Codex PATH shadow",
+        !codex.pathDefault || sameCliPath(codex.pathDefault.path, codex.selected.path),
+        codex.pathDefault
+          ? `PATH: ${codex.pathDefault.version || "unknown"} at ${codex.pathDefault.path}\nSelected: ${codex.selected.version || "unknown"} at ${codex.selected.path}`
+          : "No PATH Codex candidate was found.",
+        "Update PATH, or configure RelayDesk to call the selected Codex binary explicitly.",
+        "warn"
+      )
+    );
+  }
+  if (codex.config.exists && codex.config.serviceTier && !["fast", "flex"].includes(codex.config.serviceTier)) {
+    checks.push(
+      check(
+        "codex-service-tier",
+        "Codex service_tier compatibility",
+        false,
+        `~/.codex/config.toml has service_tier = "${codex.config.serviceTier}". Older Codex CLI builds reject values outside fast/flex.`,
+        "Use a current Codex binary or change service_tier to fast/flex for broad CLI compatibility.",
+        "warn"
+      )
+    );
+  }
+
+  return {
+    checks,
+    agents: {
+      claude,
+      codex
+    }
+  };
+}
+
 async function doctor(config) {
   const source = configSource();
   const checks = [];
@@ -653,8 +926,22 @@ async function doctor(config) {
     if (hasRunnerCommand(config, "claude")) {
       checks.push(await wslCheck("wsl-claude", "Claude Code available in WSL", "command -v claude && claude --version", "Install/login Claude Code inside WSL."));
     }
-    if (hasRunnerCommand(config, "codex")) {
-      checks.push(await wslCheck("wsl-codex", "Codex CLI available in WSL", "command -v codex && codex --version", "Install/login Codex CLI inside WSL."));
+    if (usesPlainWslCodex(config)) {
+      const wslCodex = await wslCheck("wsl-codex", "Codex CLI available in WSL", "command -v codex && codex --version", "Install/login Codex CLI inside WSL.");
+      checks.push(wslCodex);
+      if (wslCodex.status === "ok") {
+        const version = parseCodexVersion(wslCodex.detail);
+        checks.push(
+          check(
+            "wsl-codex-gpt-55",
+            "WSL Codex gpt-5.5 capable",
+            Boolean(version && semverGte(version, minCodexGpt55Version)),
+            version ? `${version} in WSL; known minimum for this workflow is ${minCodexGpt55Version}.` : wslCodex.detail,
+            "Upgrade WSL Codex CLI or point the runner start command at a newer Codex binary.",
+            "warn"
+          )
+        );
+      }
     }
   }
 
@@ -691,6 +978,9 @@ async function doctor(config) {
     }
   }
 
+  const agentParity = await agentParityChecks(config);
+  checks.push(...agentParity.checks);
+
   const summary = checks.reduce(
     (acc, item) => {
       acc.total += 1;
@@ -704,10 +994,17 @@ async function doctor(config) {
     platform: process.platform,
     node: process.version,
     config: source,
+    agents: agentParity.agents,
     summary,
     checks,
     projects
   };
+}
+
+function windowsCommandLineQuote(value) {
+  const text = String(value);
+  if (!/[ \t"&|<>^]/.test(text)) return text;
+  return `"${text.replace(/"/g, '\\"')}"`;
 }
 
 function runCommand(argv, cwd, timeoutMs = 15000) {
@@ -716,13 +1013,23 @@ function runCommand(argv, cwd, timeoutMs = 15000) {
       resolveCommand({ ok: false, code: -1, stdout: "", stderr: "Command must be an argv string array." });
       return;
     }
-    const child = spawn(argv[0], argv.slice(1), {
-      cwd,
-      windowsHide: true,
-      shell: false
-    });
     let stdout = "";
     let stderr = "";
+    let child;
+    const isWindowsCmd = process.platform === "win32" && /\.(?:cmd|bat)$/i.test(argv[0]);
+    const spawnArgv = isWindowsCmd
+      ? ["cmd.exe", ["/d", "/s", "/c", [argv[0], ...argv.slice(1)].map(windowsCommandLineQuote).join(" ")]]
+      : [argv[0], argv.slice(1)];
+    try {
+      child = spawn(spawnArgv[0], spawnArgv[1], {
+        cwd,
+        windowsHide: true,
+        shell: false
+      });
+    } catch (error) {
+      resolveCommand({ ok: false, code: -1, stdout: "", stderr: String(error) });
+      return;
+    }
     const timer = setTimeout(() => {
       child.kill();
       resolveCommand({ ok: false, code: -1, stdout, stderr: `${stderr}\nTimed out after ${timeoutMs}ms`.trim() });

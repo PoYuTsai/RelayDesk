@@ -97,9 +97,32 @@ type DoctorCheck = {
   fix?: string;
 };
 
+type AgentCliCandidate = {
+  path: string;
+  source: string;
+  ok: boolean;
+  version: string;
+  supportsGpt55?: boolean;
+  output?: string;
+  error?: string;
+};
+
+type AgentCliHealth = {
+  selected?: AgentCliCandidate | null;
+  pathDefault?: AgentCliCandidate | null;
+  candidates?: AgentCliCandidate[];
+  supportsEffort?: boolean;
+  supportsStreamJson?: boolean;
+  execJson?: boolean;
+};
+
 type DoctorContext = {
   platform: string;
   node: string;
+  agents?: {
+    claude?: AgentCliHealth;
+    codex?: AgentCliHealth;
+  };
   summary: {
     ok: number;
     warn: number;
@@ -313,6 +336,15 @@ const doctorPriorityIds = [
   "tmux-smoke",
   "wsl-claude",
   "wsl-codex",
+  "wsl-codex-gpt-55",
+  "claude-selected-cli",
+  "claude-stream-json",
+  "claude-effort-mode",
+  "codex-selected-cli",
+  "codex-gpt-55",
+  "codex-json-events",
+  "codex-path-shadow",
+  "codex-service-tier",
   "gitignore-local-config",
   "gitignore-evidence"
 ];
@@ -844,12 +876,27 @@ function runnerCwdForMode(path: string, mode: RunnerMode) {
   return path.trim();
 }
 
-function runnerDefaults(project: Project | undefined, type: string, mode: RunnerMode) {
+function windowsForwardPath(path: string) {
+  return path.trim().replace(/\\/g, "/");
+}
+
+function doubleQuote(value: string) {
+  return `"${value.replace(/"/g, '\\"')}"`;
+}
+
+function singleQuote(value: string) {
+  return `'${value.replace(/'/g, "'\\''")}'`;
+}
+
+function runnerDefaults(project: Project | undefined, type: string, mode: RunnerMode, codexBinaryPath = "") {
   const projectId = project?.id || "project";
   const projectPath = project?.path || "";
   const cwd = runnerCwdForMode(projectPath, mode);
   const target = cwd || ".";
-  const withWslShell = (command: string) => `bash -lc 'cd ${target} && ${command}'`;
+  const withWslShell = (command: string) => `bash -lc ${singleQuote(`cd ${doubleQuote(target)} && ${command}`)}`;
+  const codexBinary = codexBinaryPath ? (mode === "wsl" ? toWslPathClient(codexBinaryPath) : codexBinaryPath) : "codex";
+  const codexProjectPath = codexBinaryPath && mode === "wsl" ? windowsForwardPath(projectPath) : target;
+  const codexCommand = `${doubleQuote(codexBinary)} --no-alt-screen --dangerously-bypass-approvals-and-sandbox -C ${doubleQuote(codexProjectPath || target)}`;
   if (type === "claude-code") {
     return {
       id: "claude-code",
@@ -865,10 +912,7 @@ function runnerDefaults(project: Project | undefined, type: string, mode: Runner
       name: "Codex CLI tmux",
       session: `rc-codex-${projectId}`,
       cwd,
-      startCommand:
-        mode === "wsl"
-          ? withWslShell(`codex --no-alt-screen --dangerously-bypass-approvals-and-sandbox -C ${target}`)
-          : `codex --no-alt-screen --dangerously-bypass-approvals-and-sandbox -C ${target}`
+      startCommand: mode === "wsl" ? withWslShell(codexCommand) : codexCommand
     };
   }
   return {
@@ -892,6 +936,30 @@ function clientId(value: string, fallback = "item") {
 
 function looksLikePlaceholderPath(path: string) {
   return /(?:C:\\path\\to\\|\/path\/to\/|\\MyApp\b|\/MyApp\b)/i.test(path);
+}
+
+function oneLine(value?: string) {
+  return (value || "").split(/\r?\n/).map((line) => line.trim()).filter(Boolean)[0] || "";
+}
+
+function detailPath(value?: string) {
+  const lines = (value || "").split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
+  return lines[1] || lines[0] || "";
+}
+
+function shortPath(path?: string) {
+  if (!path) return "not found";
+  const normalized = path.replace(/\//g, "\\");
+  const parts = normalized.split("\\").filter(Boolean);
+  if (parts.length <= 4) return path;
+  return `...\\${parts.slice(-4).join("\\")}`;
+}
+
+function checkLabel(check?: DoctorCheck) {
+  if (!check) return "not checked";
+  if (check.status === "ok") return "ready";
+  if (check.status === "warn") return "attention";
+  return "blocked";
 }
 
 export function App() {
@@ -1011,7 +1079,11 @@ export function App() {
       .filter(Boolean).length;
   }, [git?.status]);
 
-  const runnerPreset = useMemo(() => runnerDefaults(activeProject, runnerType, runnerMode), [activeProject, runnerMode, runnerType]);
+  const preferredCodexBinary = doctor?.agents?.codex?.selected?.supportsGpt55 ? doctor.agents.codex.selected.path : "";
+  const runnerPreset = useMemo(
+    () => runnerDefaults(activeProject, runnerType, runnerMode, preferredCodexBinary),
+    [activeProject, preferredCodexBinary, runnerMode, runnerType]
+  );
 
   const runnerPreview = useMemo(() => {
     const session = (runnerSession || runnerPreset.session).trim();
@@ -1036,6 +1108,26 @@ export function App() {
     if (!readinessCheck) warnings.push("Run Doctor after saving to verify tmux and agent CLI availability.");
     if (readinessCheck?.status === "warn") warnings.push(`${readinessCheck.label}: ${readinessCheck.detail}`);
     if (readinessCheck?.status === "fail") blockers.push(`${readinessCheck.label}: ${readinessCheck.detail}`);
+    if (runnerType === "codex-cli") {
+      const usesSelectedCodexBinary =
+        Boolean(preferredCodexBinary && startCommand.includes(toWslPathClient(preferredCodexBinary))) ||
+        /\bcodex\.exe\b/i.test(startCommand);
+      const codexCapability = runnerMode === "wsl" && !usesSelectedCodexBinary ? doctorById.get("wsl-codex-gpt-55") : doctorById.get("codex-gpt-55");
+      const codexJson = doctorById.get("codex-json-events");
+      if (!codexCapability) {
+        warnings.push("Run Doctor to confirm this Codex runner can use the latest target model.");
+      } else if (codexCapability.status !== "ok") {
+        warnings.push(`${codexCapability.label}: ${codexCapability.detail}`);
+      }
+      if (!usesSelectedCodexBinary && runnerMode === "wsl" && doctorById.get("codex-gpt-55")?.status === "ok" && doctorById.get("wsl-codex-gpt-55")?.status !== "ok") {
+        warnings.push("Desktop Codex is newer than WSL Codex; WSL runner may not match desktop quality.");
+      }
+      if (codexJson?.status === "fail") warnings.push(`${codexJson.label}: ${codexJson.detail}`);
+    }
+    if (runnerType === "claude-code") {
+      const claudeEffort = doctorById.get("claude-effort-mode");
+      if (claudeEffort?.status === "warn") warnings.push(`${claudeEffort.label}: ${claudeEffort.detail}`);
+    }
 
     return {
       blockers,
@@ -1057,7 +1149,9 @@ export function App() {
     runnerPreset.session,
     runnerPreset.startCommand,
     runnerSession,
-    runnerStartCommand
+    runnerStartCommand,
+    runnerType,
+    preferredCodexBinary
   ]);
 
   const selectedEvidence = useMemo(() => {
@@ -1098,7 +1192,7 @@ export function App() {
   const setupRows = useMemo(() => {
     const pathChecks = (doctor?.checks || []).filter((item) => item.id.startsWith("project-"));
     const terminalChecks = ["wsl", "wsl-tmux", "wsl-tmux-smoke", "tmux", "tmux-smoke"].map((id) => doctorById.get(id)).filter(Boolean) as DoctorCheck[];
-    const agentChecks = ["wsl-claude", "wsl-codex"].map((id) => doctorById.get(id)).filter(Boolean) as DoctorCheck[];
+    const agentChecks = ["wsl-claude", "wsl-codex", "wsl-codex-gpt-55", "claude-selected-cli", "codex-gpt-55"].map((id) => doctorById.get(id)).filter(Boolean) as DoctorCheck[];
     const statusFrom = (items: DoctorCheck[]) =>
       items.some((item) => item.status === "fail") ? "fail" : items.some((item) => item.status === "warn") ? "warn" : "ok";
 
@@ -1129,6 +1223,49 @@ export function App() {
       }
     ] satisfies Array<{ id: string; label: string; status: DoctorCheck["status"]; detail: string }>;
   }, [doctor?.checks, doctorById, setup]);
+
+  const parityRows = useMemo(() => {
+    const selectedCodex = doctor?.agents?.codex?.selected;
+    const pathCodex = doctor?.agents?.codex?.pathDefault;
+    const selectedClaude = doctor?.agents?.claude?.selected;
+    return [
+      {
+        id: "claude",
+        label: "Claude Code",
+        status: doctorById.get("claude-selected-cli")?.status || "warn",
+        value: selectedClaude?.version ? `${selectedClaude.version} (${selectedClaude.source})` : oneLine(doctorById.get("claude-selected-cli")?.detail) || "not checked",
+        detail: shortPath(selectedClaude?.path || detailPath(doctorById.get("claude-selected-cli")?.detail))
+      },
+      {
+        id: "claude-mode",
+        label: "Opus / high effort",
+        status: doctorById.get("claude-effort-mode")?.status || "warn",
+        value: checkLabel(doctorById.get("claude-effort-mode")),
+        detail: doctorById.get("claude-stream-json")?.status === "ok" ? "stream-json available" : "check stream-json support"
+      },
+      {
+        id: "codex",
+        label: "Codex selected",
+        status: doctorById.get("codex-gpt-55")?.status || doctorById.get("codex-selected-cli")?.status || "warn",
+        value: selectedCodex?.version ? `${selectedCodex.version} (${selectedCodex.source})` : oneLine(doctorById.get("codex-selected-cli")?.detail) || "not checked",
+        detail: shortPath(selectedCodex?.path || detailPath(doctorById.get("codex-selected-cli")?.detail))
+      },
+      {
+        id: "codex-path",
+        label: "PATH Codex",
+        status: doctorById.get("codex-path-shadow")?.status || "warn",
+        value: pathCodex?.version ? `${pathCodex.version} (${pathCodex.source})` : "not found",
+        detail: doctorById.get("codex-path-shadow")?.status === "ok" ? "PATH matches selected" : "PATH may launch an older Codex"
+      },
+      {
+        id: "wsl-codex",
+        label: "WSL plain Codex",
+        status: doctorById.get("wsl-codex-gpt-55")?.status || doctorById.get("wsl-codex")?.status || "warn",
+        value: oneLine(doctorById.get("wsl-codex-gpt-55")?.detail) || oneLine(doctorById.get("wsl-codex")?.detail) || "not checked",
+        detail: "Only used when a WSL startCommand calls plain codex instead of an explicit binary."
+      }
+    ] satisfies Array<{ id: string; label: string; status: DoctorCheck["status"]; value: string; detail: string }>;
+  }, [doctor?.agents?.claude?.selected, doctor?.agents?.codex?.pathDefault, doctor?.agents?.codex?.selected, doctorById]);
 
   const onboardingSteps = useMemo(() => {
     const projectPath = activeProject?.path || "";
@@ -3240,12 +3377,24 @@ export function App() {
               </div>
               <div>
                 <span>Claude</span>
-                <strong>{doctorById.get("wsl-claude")?.detail?.split("\n").pop() || "not checked"}</strong>
+                <strong>{doctor?.agents?.claude?.selected?.version || doctorById.get("wsl-claude")?.detail?.split("\n").pop() || "not checked"}</strong>
               </div>
               <div>
                 <span>Codex</span>
-                <strong>{doctorById.get("wsl-codex")?.detail?.split("\n").pop() || "not checked"}</strong>
+                <strong>{doctor?.agents?.codex?.selected?.version || doctorById.get("wsl-codex")?.detail?.split("\n").pop() || "not checked"}</strong>
               </div>
+            </div>
+            <div className="parity-grid">
+              {parityRows.map((row) => (
+                <div className={cx("parity-row", row.status)} key={row.id}>
+                  <span>{row.status === "ok" ? <CheckCircle2 size={14} /> : <AlertTriangle size={14} />}</span>
+                  <div>
+                    <strong>{row.label}</strong>
+                    <em>{row.value}</em>
+                    <small>{row.detail}</small>
+                  </div>
+                </div>
+              ))}
             </div>
           </div>
           <div className="setup-actions">

@@ -119,6 +119,9 @@ You want:
 - `0 fail`.
 - No missing project paths.
 - Claude/Codex available if you configured those runners.
+- Agent parity checks that match your goal. In particular, confirm which Codex
+  entrypoint is selected and whether it is `gpt-5.5 capable` before expecting
+  Codex Desktop-like quality.
 - A passing tmux smoke check for the environment you use.
 - Unique tmux session names for every runner.
 - `.relaydesk/` and `relay.local.json` ignored by git.
@@ -152,6 +155,11 @@ CLI can live inside WSL and RelayDesk can convert `C:\...` paths into
 `/mnt/c/...` paths for the runner preview. On macOS/Linux, native tmux is the
 normal choice. If you run Windows-native tmux yourself, switch the runner mode
 to native and use Windows paths.
+
+When Doctor finds a newer Codex Desktop bundled binary, Project Manager uses
+that binary in new Codex runner defaults. The example config still uses plain
+`codex` so it stays portable; Doctor tells you when plain WSL/PATH Codex is
+older than the selected desktop-capable binary.
 
 ## 7. Manage RelayDesk sessions
 
@@ -291,6 +299,13 @@ Install tmux in the same environment where the runner starts.
 `Codex starts but shows an update prompt`
 
 Set `dismissCodexUpdatePrompt: true` in that runner's tmux config.
+
+`Codex quality or model access does not match Desktop`
+
+Open Doctor and compare `Codex selected`, `PATH Codex`, and `WSL runner Codex`.
+On some machines these are separate binaries with separate versions. Update the
+CLI used by your runner, or point the runner command / `RELAYDESK_CODEX_PATH` at
+the binary Doctor marks as `gpt-5.5 capable`.
 
 `Start works but Send Task does nothing`
 

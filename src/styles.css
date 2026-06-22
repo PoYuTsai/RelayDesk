@@ -1909,6 +1909,71 @@ h2 {
   font-size: 12px;
 }
 
+.parity-grid {
+  display: grid;
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.parity-row {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 8px;
+  min-width: 0;
+  padding: 9px;
+  background: var(--panel-2);
+  border: 1px solid var(--line-soft);
+  border-radius: 8px;
+}
+
+.parity-row > span {
+  margin-top: 2px;
+}
+
+.parity-row.ok > span {
+  color: var(--ok);
+}
+
+.parity-row.warn > span {
+  color: var(--warn);
+}
+
+.parity-row.fail > span {
+  color: var(--danger);
+}
+
+.parity-row div {
+  min-width: 0;
+}
+
+.parity-row strong,
+.parity-row em,
+.parity-row small {
+  display: block;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.parity-row strong {
+  font-size: 12px;
+}
+
+.parity-row em {
+  margin-top: 2px;
+  color: var(--text);
+  font-size: 12px;
+  font-style: normal;
+  font-weight: 800;
+}
+
+.parity-row small {
+  margin-top: 2px;
+  color: var(--muted);
+  font-size: 11px;
+}
+
 .setup-actions {
   display: grid;
   grid-template-columns: repeat(3, 1fr);
