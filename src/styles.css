@@ -340,20 +340,25 @@ button {
   flex-direction: column;
   padding: 14px;
   background: var(--panel);
-  border: 1px solid var(--line-soft);
+  border: 2px solid rgba(148, 163, 184, 0.16);
   border-radius: 8px;
   box-shadow: var(--shadow);
   cursor: pointer;
-  transition: border-color 0.16s ease, background 0.16s ease;
+  transition: border-color 0.16s ease, background 0.16s ease, box-shadow 0.16s ease;
+}
+
+.focus-agent-pane:hover:not(.selected),
+.focus-agent-pane:focus-visible:not(.selected) {
+  border-color: rgba(45, 212, 191, 0.52);
+  outline: none;
 }
 
 .focus-agent-pane.selected,
-.focus-agent-pane.writer {
-  border-color: rgba(45, 212, 191, 0.34);
-}
-
-.focus-agent-pane:hover {
-  border-color: rgba(45, 212, 191, 0.24);
+.focus-agent-pane.selected:hover,
+.focus-agent-pane.selected:focus-visible {
+  border-color: rgba(45, 212, 191, 0.82);
+  box-shadow: 0 0 0 1px rgba(45, 212, 191, 0.22), var(--shadow);
+  outline: none;
 }
 
 .focus-agent-head {

@@ -4383,9 +4383,18 @@ export function App() {
             const needsLogin = runnerNeedsLogin(paneOutput || runner.lastOutput || "");
             return (
               <article
-                className={cx("focus-agent-pane", isSelected && "selected", isWriter && "writer")}
+                className={cx("focus-agent-pane", isSelected && "selected")}
                 key={`focus-agent-${runner.id}`}
+                role="button"
+                tabIndex={0}
+                aria-pressed={isSelected}
                 onClick={() => setCommandRunnerId(runner.id)}
+                onKeyDown={(event) => {
+                  if (event.key === "Enter" || event.key === " ") {
+                    event.preventDefault();
+                    setCommandRunnerId(runner.id);
+                  }
+                }}
               >
                 <div className="focus-agent-head">
                   <div className="agent-title-row">
