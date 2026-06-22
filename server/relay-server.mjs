@@ -1703,7 +1703,7 @@ async function stopTmuxRunner(project, runner) {
 }
 
 async function captureTmuxRunner(project, runner) {
-  return runTmux(project, runner, ["capture-pane", "-p", "-t", runner.session], 10000);
+  return runTmux(project, runner, ["capture-pane", "-p", "-J", "-t", runner.session], 10000);
 }
 
 async function pasteTextAndEnter(project, runner, text, timeoutMs = 10000) {

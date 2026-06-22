@@ -180,7 +180,7 @@ button {
 .thread-main {
   min-width: 0;
   display: block;
-  padding: 7px 8px;
+  padding: 7px 76px 7px 8px;
   color: var(--text);
   text-align: left;
   background: transparent;
@@ -247,14 +247,6 @@ button {
   background: var(--panel-2);
 }
 
-.focus-session-actions {
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 6px;
-  margin-top: 0;
-}
-
-.focus-session-actions button,
 .focus-agent-actions button,
 .focus-composer button,
 .focus-setup-card button,
@@ -273,15 +265,6 @@ button {
   font-weight: 800;
 }
 
-.focus-session-actions button {
-  min-width: 0;
-  padding: 0 6px;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.focus-session-actions button:disabled,
 .focus-agent-actions button:disabled,
 .focus-composer button:disabled,
 .focus-setup-card button:disabled,
@@ -1297,7 +1280,7 @@ button {
 
 .project-group-head {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 30px;
+  grid-template-columns: minmax(0, 1fr) 28px 28px;
   gap: 4px;
   align-items: center;
 }
@@ -1360,6 +1343,33 @@ button {
   border: 1px solid transparent;
   border-radius: 7px;
   cursor: pointer;
+}
+
+.project-create-session {
+  width: 28px;
+  height: 28px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--muted);
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 7px;
+  cursor: pointer;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.project-thread-group:hover .project-create-session,
+.project-create-session:focus-visible {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.project-create-session:hover {
+  color: var(--text);
+  background: var(--panel-2);
+  border-color: var(--line);
 }
 
 .project-thread-toggle:hover {

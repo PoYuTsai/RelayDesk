@@ -2830,6 +2830,15 @@ export function App() {
     }
   }
 
+  async function createSessionForProject(project: Project) {
+    if (project.id !== activeProject?.id) {
+      setProjectId(project.id);
+      setOpenProjectThreads((current) => ({ ...current, [project.id]: true }));
+      return;
+    }
+    await createSession();
+  }
+
   async function selectSession(id: string) {
     const nextSession = sessions.find((session) => session.id === id);
     if (!nextSession || nextSession.id === activeSessionId) return;
@@ -3128,7 +3137,7 @@ export function App() {
     if (!consoleAutoRefresh || !commandRunner || commandRunner.state !== "running") return;
     const interval = window.setInterval(() => {
       void captureConsole(commandRunner, { mode: "peek", silent: true });
-    }, 4000);
+    }, 1200);
     return () => window.clearInterval(interval);
   }, [activeProject?.id, commandRunner?.id, commandRunner?.state, consoleAutoRefresh]);
 
@@ -3152,7 +3161,7 @@ export function App() {
     }
 
     void peekLiveRunners();
-    const interval = window.setInterval(() => void peekLiveRunners(), 2500);
+    const interval = window.setInterval(() => void peekLiveRunners(), 1200);
     return () => {
       cancelled = true;
       window.clearInterval(interval);
@@ -3274,6 +3283,7 @@ export function App() {
       await postRunnerAction(runner, "key", { key });
       await new Promise<void>((resolve) => window.setTimeout(resolve, 220));
       await captureConsole(runner, { mode: "peek", silent: true });
+      scheduleRunnerPeeks(runner, [700, 1600, 3200]);
       await refresh(activeProject);
     } catch (error) {
       const message = `Keyboard control failed: ${String(error)}`;
@@ -3308,6 +3318,7 @@ export function App() {
       appendConsoleOutput(runner.id, `[RelayDesk sent to ${runner.session}]\n${value}`);
       await new Promise<void>((resolve) => window.setTimeout(resolve, 700));
       await captureConsole(runner, { mode: "peek", silent: true });
+      scheduleRunnerPeeks(runner);
       await refresh(activeProject);
     } catch (error) {
       const message = `Send failed: ${String(error)}`;
@@ -3362,6 +3373,16 @@ export function App() {
     }
   }
 
+  function scheduleRunnerPeeks(runner: Runner, delays = [900, 2200, 4800, 9000]) {
+    const projectIdAtSchedule = activeProject?.id;
+    delays.forEach((delay) => {
+      window.setTimeout(() => {
+        if (!projectIdAtSchedule || activeProjectIdRef.current !== projectIdAtSchedule) return;
+        void captureConsole(runner, { mode: "peek", silent: true });
+      }, delay);
+    });
+  }
+
   async function sendSlashCommand(value = slashCommand, options: { source?: "console" | "panel" } = {}) {
     const command = normalizeSlashCommand(value);
     if (!command) return;
@@ -3411,6 +3432,7 @@ export function App() {
       setLastRunnerOutput(pendingMessage);
       await new Promise<void>((resolve) => window.setTimeout(resolve, meta.captureDelayMs));
       await captureConsole(commandRunner, { mode: "peek", silent: true });
+      scheduleRunnerPeeks(commandRunner, [900, 2200, 4800]);
       await refresh(activeProject);
     } catch (error) {
       const message = `Slash command failed: ${String(error)}`;
@@ -3465,6 +3487,7 @@ export function App() {
       });
       await new Promise<void>((resolve) => window.setTimeout(resolve, 650));
       await Promise.all(targetRunners.map((runner) => captureConsole(runner, { mode: "peek", silent: true })));
+      targetRunners.forEach((runner) => scheduleRunnerPeeks(runner));
       await refresh(activeProject);
     } catch (error) {
       const message = `Console send failed: ${String(error)}`;
@@ -4487,6 +4510,17 @@ export function App() {
                           <small>{ui.sidebar.runnerCount(project.runnerCount)}</small>
                         </span>
                       </button>
+                      {isProjectActive && (
+                        <button
+                          className="project-create-session"
+                          disabled={!!sessionBusy}
+                          aria-label={ui.session.new}
+                          title={ui.session.new}
+                          onClick={() => void createSessionForProject(project)}
+                        >
+                          <Plus size={14} />
+                        </button>
+                      )}
                       <button
                         className={cx("project-thread-toggle", projectOpen && "open")}
                         aria-label={projectOpen ? "Collapse project threads" : "Expand project threads"}
@@ -4539,29 +4573,6 @@ export function App() {
         </div>
 
         <div className="focus-sidebar-footer">
-          <div className="focus-session-actions">
-            <button disabled={!!sessionBusy} onClick={() => void createSession()} title={ui.session.new}>
-              <Plus size={13} />
-              {ui.session.new}
-            </button>
-            <button disabled={!!sessionBusy} onClick={() => setShowArchivedSessions((current) => !current)}>
-              <Archive size={13} />
-              {showArchivedSessions ? (lang === "zh-TW" ? "隱藏封存" : "Hide archived") : (lang === "zh-TW" ? "顯示封存" : "Show archived")}
-            </button>
-            <button disabled={!!sessionBusy} onClick={() => void copySessionBrief()}>
-              <Copy size={13} />
-              {copiedSessionBrief ? ui.session.copied : ui.session.copyBrief}
-            </button>
-          </div>
-
-          <section className="focus-side-block risk-box">
-            <ShieldCheck size={16} />
-            <div>
-              <strong>{ui.sidebar.writerPolicy}</strong>
-              <p>{ui.sidebar.writerPolicyDetail}</p>
-            </div>
-          </section>
-
           <section className="focus-side-block runner-health-block">
             <div className="section-label">{ui.sidebar.runnerHealth}</div>
             {runners.length ? (
