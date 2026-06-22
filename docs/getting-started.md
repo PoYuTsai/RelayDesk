@@ -67,9 +67,14 @@ Session name example:
 - `rc-codex-my-app` for the Codex CLI tmux session.
 
 `rc` is only a naming convention. It can mean "remote control" or
-"RelayDesk-controlled". The practical benefit is that a stable tmux session name
-lets you reconnect later from RelayDesk, a terminal, or a remote-control flow as
-long as the tmux server is still running on your machine.
+"RelayDesk-controlled". For a public or team setup, replace `my-app` with your
+own project name, such as `rc-<your-project-name>`.
+
+The practical benefit is that a stable tmux session name lets you reconnect
+later from RelayDesk, a terminal, or an official remote-control flow as long as
+the tmux server is still running on your machine. For example, Claude Code
+officially supports `/remote-control` and `/rc`; RelayDesk keeps the same local
+session easy to find and control.
 
 ## 4. Start RelayDesk
 
@@ -148,13 +153,18 @@ RelayDesk does not implement slash commands itself. Official commands differ by
 agent and version:
 
 - Claude Code: type `/` or `/help`; common examples include `/clear`,
-  `/compact`, `/resume`, `/remote-control`, `/diff`, and `/code-review`.
+  `/compact`, `/resume`, `/remote-control` or `/rc`, `/diff`, `/code-review`,
+  `/status`, and `/usage`.
 - Codex CLI: type `/` or check the official docs; common examples include
-  `/clear`, `/new`, `/resume`, `/compact`, `/diff`, `/plan`, `/goal`, and
-  `/fork`.
+  `/clear`, `/new`, `/resume`, `/compact`, `/diff`, `/plan`, `/goal`,
+  `/review`, `/status`, and `/usage`.
 
-Custom commands such as `/round` or `/handoff` only work if you define them in
-your own agent skills, prompts, commands, or project setup.
+For the fuller operation guide and an official-command snapshot, see
+[Slash Commands](slash-commands.md).
+
+Custom commands such as `/round` or `/handoff` are not official RelayDesk,
+Claude Code, or Codex CLI built-ins. They only work if you define them in your
+own agent skills, prompts, commands, or project setup.
 
 Use Capture first if you are not sure the agent is waiting at an input prompt.
 

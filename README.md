@@ -152,12 +152,22 @@ state to confirm the agent is waiting at a prompt before sending input.
 
 ## Why `rc-*` Session Names?
 
-`rc` is only a naming convention in the example config. It means "remote
-control" or "RelayDesk-controlled" in practice, not a required tmux feature.
+`rc` is only a naming convention in the example config. It can mean "remote
+control" or "RelayDesk-controlled"; it is not a required tmux feature and it is
+not tied to one user's project.
 
-The reason to keep a stable tmux session name is that you can leave a local tmux
+The pattern is:
+
+- `rc-<your-project-name>` for the Claude Code runner.
+- `rc-codex-<your-project-name>` for the Codex CLI runner.
+
+The reason to keep a stable tmux session name is that you can leave a tmux
 server running on your computer, then later attach to that same Claude Code or
-Codex CLI session from another terminal, RelayDesk, or a remote-control workflow.
+Codex CLI session from another terminal, RelayDesk, or an official
+remote-control flow. For example, Claude Code has `/remote-control` and `/rc` to
+make a local session available from Claude on the web. RelayDesk itself does not
+tunnel tmux over the internet; it coordinates the local sessions you already
+run.
 
 Example naming:
 
@@ -174,10 +184,10 @@ the target CLI to see what is available in your environment.
 
 Common official examples:
 
-- Claude Code: `/help`, `/clear`, `/compact`, `/resume`, `/remote-control`,
-  `/diff`, `/code-review`.
+- Claude Code: `/help`, `/clear`, `/compact`, `/resume`, `/remote-control`
+  or `/rc`, `/diff`, `/code-review`, `/status`, `/usage`.
 - Codex CLI: `/clear`, `/new`, `/resume`, `/compact`, `/diff`, `/plan`,
-  `/goal`, `/fork`.
+  `/goal`, `/review`, `/status`, `/usage`.
 
 Custom commands such as `/round` or `/handoff` are not RelayDesk or provider
 built-ins. They can still work if you define them through your agent's custom
@@ -185,6 +195,7 @@ commands, skills, prompts, or project setup.
 
 References:
 
+- RelayDesk slash command guide: [docs/slash-commands.md](docs/slash-commands.md)
 - Claude Code commands: <https://code.claude.com/docs/en/commands>
 - Codex CLI slash commands: <https://developers.openai.com/codex/cli/slash-commands>
 
@@ -281,6 +292,7 @@ Saved snapshots go under `.relaydesk/evidence/`, which is gitignored.
 
 - [Getting Started](docs/getting-started.md)
 - [Configuration](docs/configuration.md)
+- [Slash Commands](docs/slash-commands.md)
 - [Compatibility](docs/compatibility.md)
 - [Release Checklist](docs/release-checklist.md)
 - [Open Source Roadmap](docs/open-source-roadmap.md)

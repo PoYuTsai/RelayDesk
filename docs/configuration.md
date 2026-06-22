@@ -56,6 +56,12 @@ Fields:
 remote-control/RelayDesk-controlled and helps you remember that the tmux session
 is meant to stay attachable from RelayDesk or another terminal.
 
+For public documentation or a team template, use names like
+`rc-<your-project-name>` and `rc-codex-<your-project-name>` instead of a private
+project name. Claude Code's `/remote-control` and `/rc` are official commands,
+but a tmux session name such as `rc-my-project` is still just your local naming
+choice.
+
 ## Windows + WSL
 
 Use:

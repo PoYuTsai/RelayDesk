@@ -1,0 +1,114 @@
+# Slash Commands
+
+RelayDesk does not emulate slash commands. It sends the exact text you type to
+the selected live tmux session and presses Enter. The command is then handled by
+Claude Code, Codex CLI, or whichever CLI is running in that pane.
+
+## Safe Operation
+
+1. Select the runner in Session Console or Runner Ops.
+2. Click Capture Pane if you are not sure whether the CLI is waiting at a prompt.
+3. Type the slash command, for example `/help` or `/compact`.
+4. Press Send.
+5. Capture again to confirm the command was accepted.
+
+Do not send `/clear`, `/new`, `/delete`, `/archive`, `/quit`, `/exit`, or other
+state-changing commands while the agent is still executing a task.
+
+## Official Source Of Truth
+
+Command availability depends on product version, platform, plan, and runtime
+mode. The complete current catalog should always be checked in the official CLI:
+
+- Type `/` inside the running CLI to open the local command picker.
+- Type `/help` where supported.
+- Claude Code commands: <https://code.claude.com/docs/en/commands>
+- Codex CLI slash commands: <https://developers.openai.com/codex/cli/slash-commands>
+
+The command names below are a convenience snapshot last checked on 2026-06-22.
+They may not all appear for every user.
+
+## Claude Code
+
+Common daily commands:
+
+- `/help`: show available commands.
+- `/clear [name]`: start a new conversation with empty context.
+- `/compact [instructions]`: summarize the current conversation to free context.
+- `/resume [session]`: resume a previous conversation.
+- `/remote-control` or `/rc`: make the local session available from Claude on
+  the web.
+- `/diff`: inspect uncommitted changes.
+- `/code-review [effort] [--fix] [--comment] [target]`: review the current diff.
+- `/review [PR]`: review a pull request locally.
+- `/status`: show settings/status information.
+- `/usage`: show session cost and usage statistics.
+- `/model [model]`: switch model.
+- `/effort [level|auto]`: adjust reasoning effort.
+- `/permissions`: manage tool permission rules.
+- `/mcp`: manage MCP server connections.
+- `/memory`: edit Claude memory files and memory settings.
+- `/doctor`: diagnose Claude Code installation and settings.
+- `/debug [description]`: enable debug logging and troubleshoot.
+- `/exit` or `/quit`: exit the CLI or detach an attached background session.
+
+Other official commands listed by Claude Code docs include:
+
+`/add-dir`, `/advisor`, `/agents`, `/autofix-pr`, `/background`, `/batch`,
+`/branch`, `/btw`, `/cd`, `/chrome`, `/claude-api`, `/color`, `/config`,
+`/context`, `/copy`, `/cost`, `/deep-research`, `/desktop`, `/export`, `/fast`,
+`/feedback`, `/fewer-permission-prompts`, `/focus`, `/fork`, `/goal`,
+`/heapdump`, `/hooks`, `/ide`, `/init`, `/insights`, `/install-github-app`,
+`/install-slack-app`, `/keybindings`, `/login`, `/logout`, `/loop`, `/mobile`,
+`/passes`, `/plan`, `/plugin`, `/powerup`, `/privacy-settings`, `/radio`,
+`/recap`, `/release-notes`, `/reload-plugins`, `/reload-skills`, `/remote-env`,
+`/rename`, `/rewind`, `/run`, `/run-skill-generator`, `/sandbox`, `/schedule`,
+`/scroll-speed`, `/security-review`, `/setup-bedrock`, `/setup-vertex`,
+`/simplify`, `/skills`, `/stats`, `/statusline`, `/stickers`, `/stop`,
+`/tasks`, `/team-onboarding`, `/teleport`, `/terminal-setup`, `/theme`, `/tui`,
+`/ultraplan`, `/ultrareview`, `/upgrade`, `/usage-credits`, `/verify`,
+`/voice`, `/web-setup`, and `/workflows`.
+
+Some commands are aliases, conditional, plan-gated, platform-specific, or
+available only on certain Claude plans.
+
+## Codex CLI
+
+Common daily commands:
+
+- `/`: show the command picker where available.
+- `/clear`: clear the terminal and start a fresh chat.
+- `/new`: start a new conversation inside the same CLI session.
+- `/resume`: resume a saved conversation.
+- `/compact`: summarize the visible conversation to free tokens.
+- `/diff`: show the Git diff, including untracked files.
+- `/plan`: switch to plan mode and optionally send a prompt.
+- `/goal`: set, view, pause, resume, or clear a task goal.
+- `/review`: ask Codex to review the working tree.
+- `/status`: display session configuration and token usage.
+- `/usage`: view account token usage or rate-limit reset options.
+- `/model`: choose the active model and reasoning effort where available.
+- `/permissions`: adjust what Codex can do without asking first.
+- `/mcp`: list configured MCP tools.
+- `/skills`: browse and use local skills.
+- `/ps`: show experimental background terminals.
+- `/stop`: stop background terminals.
+- `/quit` or `/exit`: exit the CLI.
+
+Other official commands listed by Codex CLI docs include:
+
+`/archive`, `/delete`, `/copy`, `/experimental`, `/approve`, `/memories`,
+`/import`, `/feedback`, `/init`, `/logout`, `/mention`, `/fast`,
+`/personality`, `/fork`, `/side` or `/btw`, `/raw`, `/debug-config`,
+`/statusline`, `/title`, `/theme`, `/keymap`, `/apps`, `/plugins`, `/hooks`,
+`/agent`, `/ide`, `/vim`, and `/sandbox-add-read-dir`.
+
+Some commands are unavailable while a task is running, inside side conversations,
+in remote sessions, or on unsupported platforms.
+
+## Custom Commands
+
+`/round`, `/handoff`, and similar workflow shortcuts are not official RelayDesk,
+Claude Code, or Codex CLI built-ins. They can still work through RelayDesk if
+you define them in your agent's own custom command, skill, prompt, or project
+configuration system.
