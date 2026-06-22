@@ -1334,6 +1334,106 @@ h2 {
   font-size: 12px;
 }
 
+.evidence-relay-panel {
+  display: grid;
+  gap: 10px;
+  margin-top: 12px;
+  padding: 11px;
+  background: #090c10;
+  border: 1px solid var(--line-soft);
+  border-radius: 8px;
+}
+
+.evidence-relay-head {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(160px, 220px);
+  align-items: end;
+  gap: 10px;
+}
+
+.evidence-relay-head strong,
+.evidence-relay-head span {
+  display: block;
+  min-width: 0;
+}
+
+.evidence-relay-head strong {
+  color: var(--text);
+  font-size: 12px;
+}
+
+.evidence-relay-head span {
+  margin-top: 3px;
+  overflow: hidden;
+  color: var(--muted);
+  font-size: 11px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.evidence-relay-head select {
+  width: 100%;
+  min-width: 0;
+  height: 31px;
+  padding: 0 9px;
+  color: var(--text);
+  background: #0d1015;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  outline: none;
+  font-size: 12px;
+  font-weight: 750;
+}
+
+.evidence-relay-panel textarea {
+  width: 100%;
+  min-height: 82px;
+  padding: 10px;
+  resize: vertical;
+  color: var(--text);
+  background: #0d1015;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  outline: none;
+  line-height: 1.45;
+}
+
+.evidence-relay-head select:focus,
+.evidence-relay-panel textarea:focus {
+  border-color: rgba(45, 212, 191, 0.5);
+}
+
+.evidence-relay-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.evidence-relay-actions button {
+  height: 31px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  padding: 0 10px;
+  color: var(--text);
+  background: var(--panel-2);
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.evidence-relay-actions button:hover {
+  border-color: rgba(45, 212, 191, 0.36);
+}
+
+.evidence-relay-actions button:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
 .evidence-paths {
   display: grid;
   gap: 5px;
@@ -2195,6 +2295,10 @@ pre {
   .evidence-preview-head {
     flex-direction: column;
     align-items: stretch;
+  }
+
+  .evidence-relay-head {
+    grid-template-columns: 1fr;
   }
 
   .decision-compose {

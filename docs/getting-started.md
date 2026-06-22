@@ -233,8 +233,13 @@ If text capture is not enough:
 2. Pick only that agent conversation window.
 3. RelayDesk saves the image under `.relaydesk/evidence/`.
 4. RelayDesk creates a decision card for second-pass review.
+5. In the Evidence preview, choose the reviewer runner.
+6. Paste OCR text or a short note if the image is not directly inspectable.
+7. Click `Build review` to create another review decision, or `Send review` to
+   send it to the reviewer runner immediately.
+8. Click `Retake` when the source runner screen changed and the snapshot is stale.
 
-Snapshot v1 does not include bundled OCR. Add manual OCR text or context in the decision note when needed.
+Snapshot v1 does not include bundled OCR. Add manual OCR text or context in the Evidence preview when needed.
 
 ## Troubleshooting
 

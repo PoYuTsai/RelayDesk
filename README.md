@@ -319,6 +319,13 @@ Snapshot v1 saves full screenshots without automatic redaction. This is
 intentional for local debugging: the other agent often needs the complete
 conversation context.
 
+After a snapshot is saved, the Evidence preview becomes the relay surface:
+
+- select the reviewer runner;
+- paste OCR text or a short note when the image is not directly inspectable;
+- build a review decision or send it to the reviewer runner immediately;
+- retake the snapshot from the same source runner when the capture is stale.
+
 Saved snapshots go under `.relaydesk/evidence/`, which is gitignored.
 
 ## Documentation

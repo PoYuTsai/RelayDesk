@@ -290,6 +290,13 @@ Stop / Restart 這類動作會先跳確認，避免誤殺 session。
 
 Snapshot v1 預設保存完整截圖，不會自動遮罩 email、路徑或 log。這是刻意設計，因為你的使用場景通常需要另一個 agent 看完整上下文。
 
+截圖存好後，Evidence preview 會變成 relay 操作區：
+
+- 選 reviewer runner。
+- 如果圖片不能被 agent 直接讀，貼上 OCR 文字或補充說明。
+- 建立 review decision，或直接送進 reviewer runner。
+- 如果畫面過期，可以從同一個 source runner 重新截圖。
+
 截圖會存到 `.relaydesk/evidence/`，這個資料夾已經 gitignore。
 
 ## 文件

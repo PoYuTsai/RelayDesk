@@ -164,9 +164,13 @@ type Evidence = {
   kind: "image" | "video" | "log";
   size: string;
   source?: string;
+  sourceRunnerId?: string;
+  reviewerRunnerId?: string;
   path?: string;
   wslPath?: string;
   previewUrl?: string;
+  note?: string;
+  capturedAt?: string;
 };
 
 type DecisionItem = {
@@ -403,25 +407,31 @@ function buildReturnVerdict(decision: DecisionItem, task: string, route: RelayRo
     .join("\n");
 }
 
-function snapshotReply(runner: Runner, task: string, hostPath: string, wslPath: string) {
+function snapshotReply(runner: Runner, task: string, hostPath: string, wslPath: string, note = "", route: RelayRouteContext = {}) {
   return [
     `Snapshot from ${runner.session}`,
+    route.reviewerName ? `Reviewer runner: ${route.reviewerName}` : "",
     `Windows file: ${hostPath}`,
     `WSL file: ${wslPath}`,
+    note ? `OCR / context: ${note}` : "",
     `Task: ${task}`,
     "Please do a second-pass check on this agent conversation snapshot.",
     "Focus on whether the source agent is blocked, asking for a decision, showing a risky command, or missing evidence.",
     "If you cannot inspect the image directly, ask me for OCR text or a cropped follow-up snapshot."
-  ].join("\n");
+  ]
+    .filter(Boolean)
+    .join("\n");
 }
 
-function evidenceHandoffText(item: Evidence, task: string) {
+function evidenceHandoffText(item: Evidence, task: string, route: RelayRouteContext = {}) {
   return [
     `Evidence handoff: ${item.name}`,
+    route.sourceName || route.reviewerName ? `Route: ${route.sourceName || item.source || "evidence"} -> ${route.reviewerName || "reviewer"} -> source` : "",
     `Type: ${item.kind}`,
     item.source ? `Source: ${item.source}` : "",
     item.path ? `Windows file: ${item.path}` : "",
     item.wslPath ? `WSL file: ${item.wslPath}` : "",
+    item.note ? `OCR / context: ${item.note}` : "",
     `Task: ${task}`,
     "Please review this evidence before the next agent step.",
     "Focus on whether it changes the root cause, risk level, reproduction path, or next command.",
@@ -1234,16 +1244,24 @@ export function App() {
       }
 
       const saved = result.evidence;
+      const reviewerRunnerId = defaultReviewerId(runner.id);
       const evidenceItem: Evidence = {
         id: `${saved.name}-${Date.now()}`,
         name: saved.name,
         kind: "image",
         size: `${frame.width}x${frame.height}`,
         source: runner.session,
+        sourceRunnerId: runner.id,
+        reviewerRunnerId,
         path: saved.hostPath,
-        wslPath: saved.wslPath
+        wslPath: saved.wslPath,
+        capturedAt: new Date().toISOString()
       };
-      const replyDraft = snapshotReply(runner, task, saved.hostPath, saved.wslPath);
+      const reviewerRunner = runnerById(reviewerRunnerId);
+      const replyDraft = snapshotReply(runner, task, saved.hostPath, saved.wslPath, "", {
+        sourceName: runner.session,
+        reviewerName: reviewerRunner?.session
+      });
       setEvidence((current) => [evidenceItem, ...current].slice(0, 8));
       setSelectedEvidenceId(evidenceItem.id);
       const snapshotDecision: DecisionItem = {
@@ -1253,8 +1271,8 @@ export function App() {
         reviewerRunnerId: defaultReviewerId(runner.id),
         title: "Conversation snapshot review",
         prompt: `Review the captured ${runner.session} conversation screen before the next agent step.`,
-        options: ["Send to other agent", "Need OCR text", "Retake snapshot"],
-        selected: "Send to other agent",
+        options: ["Send to reviewer", "Need OCR text", "Retake snapshot"],
+        selected: "Send to reviewer",
         note: `Snapshot saved at ${saved.wslPath}`,
         replyDraft,
         status: "open"
@@ -1263,7 +1281,7 @@ export function App() {
         snapshotDecision,
         ...current
       ].slice(0, 12));
-      setLastRunnerOutput(`Snapshot saved.\nWindows: ${saved.hostPath}\nWSL: ${saved.wslPath}`);
+      setLastRunnerOutput(`Snapshot saved and review card drafted.\nWindows: ${saved.hostPath}\nWSL: ${saved.wslPath}`);
       await refresh(activeProject);
     } catch (error) {
       setLastRunnerOutput(`Snapshot failed: ${String(error)}`);
@@ -1293,26 +1311,79 @@ export function App() {
     setSelectedEvidenceId(next[0]?.id || selectedEvidenceId);
   }
 
-  function buildEvidenceHandoff(item = selectedEvidence) {
-    if (!item) return;
-    const sourceRunner = item.source ? runners.find((runner) => runner.session === item.source) : undefined;
-    const reviewerRunnerId = defaultReviewerId(sourceRunner?.id || commandRunner?.id || "");
-    const replyDraft = evidenceHandoffText(item, task);
-    const evidenceDecision: DecisionItem = {
+  function updateEvidence(id: string, patch: Partial<Evidence>) {
+    setEvidence((current) => current.map((item) => (item.id === id ? { ...item, ...patch } : item)));
+  }
+
+  function evidenceSourceRunner(item: Evidence) {
+    return runnerById(item.sourceRunnerId) || (item.source ? runners.find((runner) => runner.session === item.source) : undefined) || commandRunner;
+  }
+
+  function evidenceReviewerRunner(item: Evidence) {
+    const sourceRunner = evidenceSourceRunner(item);
+    return runnerById(item.reviewerRunnerId) || runnerById(defaultReviewerId(sourceRunner?.id || "")) || runners[0];
+  }
+
+  function evidenceRelayRoute(item: Evidence): RelayRouteContext {
+    const sourceRunner = evidenceSourceRunner(item);
+    const reviewerRunner = evidenceReviewerRunner(item);
+    return {
+      sourceName: sourceRunner?.session || item.source,
+      reviewerName: reviewerRunner?.session
+    };
+  }
+
+  function buildEvidenceDecision(item: Evidence): DecisionItem {
+    const sourceRunner = evidenceSourceRunner(item);
+    const reviewerRunner = evidenceReviewerRunner(item);
+    const route = evidenceRelayRoute(item);
+    const isSnapshot = item.kind === "image" && Boolean(item.sourceRunnerId || item.source);
+    const pathNote = [item.wslPath || item.path || "Local browser file selected.", item.note ? `OCR / context: ${item.note}` : ""]
+      .filter(Boolean)
+      .join("\n");
+    const replyDraft =
+      isSnapshot && sourceRunner && item.path && item.wslPath
+        ? snapshotReply(sourceRunner, task, item.path, item.wslPath, item.note || "", route)
+        : evidenceHandoffText(item, task, route);
+    return {
       id: `evidence-${item.id}-${Date.now()}`,
       source: item.source ? `${item.source} evidence` : "Evidence tray",
-      sourceRunnerId: sourceRunner?.id || commandRunner?.id || "",
-      reviewerRunnerId,
-      title: `Review evidence: ${item.name}`,
-      prompt: `Review ${item.name} before the next agent step.`,
-      options: ["Send to other agent", "Need OCR text", "Need more evidence"],
-      selected: "Send to other agent",
-      note: item.wslPath || item.path || "Local browser file selected.",
+      sourceRunnerId: sourceRunner?.id || "",
+      reviewerRunnerId: reviewerRunner?.id || "",
+      title: isSnapshot ? `Snapshot review: ${item.source || item.name}` : `Review evidence: ${item.name}`,
+      prompt: isSnapshot ? `Review the captured ${item.source || "agent"} conversation screen before the next agent step.` : `Review ${item.name} before the next agent step.`,
+      options: isSnapshot ? ["Send to reviewer", "Need OCR text", "Retake snapshot"] : ["Send to reviewer", "Need OCR text", "Need more evidence"],
+      selected: "Send to reviewer",
+      note: pathNote,
       replyDraft,
       status: "open"
     };
+  }
+
+  async function createEvidenceRelay(item = selectedEvidence, options: { send?: boolean } = {}) {
+    if (!item) return;
+    const evidenceDecision = buildEvidenceDecision(item);
     setDecisions((current) => [evidenceDecision, ...current].slice(0, 12));
-    setLastRunnerOutput(`Evidence handoff drafted for ${item.name}.`);
+    if (!options.send) {
+      setLastRunnerOutput(`Evidence review drafted for ${item.name}.`);
+      return;
+    }
+
+    const reviewerRunner = evidenceReviewerRunner(item);
+    if (!reviewerRunner || reviewerRunner.state !== "running") {
+      setLastRunnerOutput(`Evidence review drafted. Start ${reviewerRunner?.session || "the reviewer runner"} before sending it.`);
+      return;
+    }
+
+    await runRunner(reviewerRunner, "send", {
+      text: evidenceDecision.replyDraft,
+      confirmMessage: `Send evidence review to ${reviewerRunner.session}?`,
+      onSuccess: () =>
+        updateDecision(evidenceDecision.id, {
+          status: "reviewing",
+          sentAt: new Date().toISOString()
+        })
+    });
   }
 
   function runnerById(id = "") {
@@ -2258,37 +2329,86 @@ export function App() {
               </button>
             ))}
           </div>
-          {selectedEvidence && (
-            <div className="evidence-preview">
-              <div className="evidence-preview-head">
-                <div>
-                  <strong>{selectedEvidence.name}</strong>
-                  <span>{selectedEvidence.source || "Local evidence"} / {selectedEvidence.kind}</span>
-                </div>
-                <button onClick={() => buildEvidenceHandoff(selectedEvidence)}>
-                  <Send size={13} />
-                  Build handoff
-                </button>
-              </div>
-              <div className="evidence-preview-body">
-                {selectedEvidence.kind === "image" && selectedEvidencePreview ? (
-                  <img src={selectedEvidencePreview} alt={selectedEvidence.name} />
-                ) : selectedEvidence.kind === "video" && selectedEvidencePreview ? (
-                  <video src={selectedEvidencePreview} controls />
-                ) : (
-                  <div className="evidence-preview-empty">
-                    <FileDiff size={18} />
-                    <span>Preview is not available for this evidence type.</span>
+          {selectedEvidence &&
+            (() => {
+              const sourceRunner = evidenceSourceRunner(selectedEvidence);
+              const reviewerRunner = evidenceReviewerRunner(selectedEvidence);
+              const reviewerId = selectedEvidence.reviewerRunnerId || reviewerRunner?.id || "";
+              const canRetake = Boolean(selectedEvidence.sourceRunnerId || selectedEvidence.source) && Boolean(sourceRunner);
+
+              return (
+                <div className="evidence-preview">
+                  <div className="evidence-preview-head">
+                    <div>
+                      <strong>{selectedEvidence.name}</strong>
+                      <span>{selectedEvidence.source || "Local evidence"} / {selectedEvidence.kind}</span>
+                    </div>
+                    <button onClick={() => void createEvidenceRelay(selectedEvidence)}>
+                      <Send size={13} />
+                      Build review
+                    </button>
                   </div>
-                )}
-              </div>
-              <div className="evidence-paths">
-                {selectedEvidence.path && <span>Windows: {selectedEvidence.path}</span>}
-                {selectedEvidence.wslPath && <span>WSL: {selectedEvidence.wslPath}</span>}
-                {!selectedEvidence.path && !selectedEvidence.wslPath && <span>Browser-local file. Build handoff will ask the other agent for OCR or a focused snapshot if needed.</span>}
-              </div>
-            </div>
-          )}
+                  <div className="evidence-preview-body">
+                    {selectedEvidence.kind === "image" && selectedEvidencePreview ? (
+                      <img src={selectedEvidencePreview} alt={selectedEvidence.name} />
+                    ) : selectedEvidence.kind === "video" && selectedEvidencePreview ? (
+                      <video src={selectedEvidencePreview} controls />
+                    ) : (
+                      <div className="evidence-preview-empty">
+                        <FileDiff size={18} />
+                        <span>Preview is not available for this evidence type.</span>
+                      </div>
+                    )}
+                  </div>
+                  <div className="evidence-relay-panel">
+                    <div className="evidence-relay-head">
+                      <div>
+                        <strong>Snapshot relay</strong>
+                        <span>{sourceRunner?.session || selectedEvidence.source || "manual source"} {"->"} {reviewerRunner?.session || "reviewer"} {"->"} source</span>
+                      </div>
+                      <select
+                        value={reviewerId}
+                        onChange={(event) => updateEvidence(selectedEvidence.id, { reviewerRunnerId: event.target.value })}
+                      >
+                        <option value="">Choose reviewer</option>
+                        {runners.map((runner) => (
+                          <option value={runner.id} key={`evidence-reviewer-${selectedEvidence.id}-${runner.id}`}>
+                            {runner.session}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                    <textarea
+                      value={selectedEvidence.note || ""}
+                      onChange={(event) => updateEvidence(selectedEvidence.id, { note: event.target.value })}
+                      placeholder="Paste OCR, visible error text, or the exact detail the other agent should verify..."
+                    />
+                    <div className="evidence-relay-actions">
+                      <button onClick={() => void createEvidenceRelay(selectedEvidence)}>
+                        <Plus size={13} />
+                        Build review
+                      </button>
+                      <button
+                        disabled={!!busyRunner || !reviewerRunner || reviewerRunner.state !== "running"}
+                        onClick={() => void createEvidenceRelay(selectedEvidence, { send: true })}
+                      >
+                        <Send size={13} />
+                        Send review
+                      </button>
+                      <button disabled={!!busyRunner || !canRetake || !sourceRunner} onClick={() => sourceRunner && void snapshotRunner(sourceRunner)}>
+                        <Camera size={13} />
+                        Retake
+                      </button>
+                    </div>
+                  </div>
+                  <div className="evidence-paths">
+                    {selectedEvidence.path && <span>Windows: {selectedEvidence.path}</span>}
+                    {selectedEvidence.wslPath && <span>WSL: {selectedEvidence.wslPath}</span>}
+                    {!selectedEvidence.path && !selectedEvidence.wslPath && <span>Browser-local file. Add OCR/context before sending if the reviewer cannot inspect it directly.</span>}
+                  </div>
+                </div>
+              );
+            })()}
         </section>
       </section>
 
