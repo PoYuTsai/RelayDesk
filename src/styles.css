@@ -1963,6 +1963,127 @@ h2 {
   border-color: rgba(248, 113, 113, 0.28);
 }
 
+.runner-mode-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: end;
+  gap: 8px;
+}
+
+.runner-mode-row label {
+  display: grid;
+  gap: 5px;
+  min-width: 0;
+}
+
+.runner-mode-row label span {
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
+.runner-mode-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 31px;
+  padding: 0 9px;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  font-size: 11px;
+  font-weight: 900;
+}
+
+.runner-mode-badge.safe {
+  color: var(--ok);
+  border-color: rgba(52, 211, 153, 0.28);
+  background: rgba(52, 211, 153, 0.08);
+}
+
+.runner-mode-badge.warn {
+  color: var(--warn);
+  border-color: rgba(251, 191, 36, 0.26);
+  background: rgba(251, 191, 36, 0.08);
+}
+
+.runner-preview {
+  display: grid;
+  gap: 7px;
+  padding: 9px;
+  background: #0d1015;
+  border: 1px solid var(--line-soft);
+  border-radius: 8px;
+}
+
+.runner-preview div {
+  display: grid;
+  grid-template-columns: 92px minmax(0, 1fr);
+  align-items: start;
+  gap: 8px;
+  min-width: 0;
+}
+
+.runner-preview span {
+  color: var(--faint);
+  font-size: 11px;
+  font-weight: 900;
+  text-transform: uppercase;
+}
+
+.runner-preview code,
+.runner-preview strong {
+  min-width: 0;
+  color: var(--text);
+  font-size: 11px;
+  line-height: 1.45;
+  overflow-wrap: anywhere;
+}
+
+.runner-preview code {
+  font-family: ui-monospace, SFMono-Regular, Consolas, "Liberation Mono", monospace;
+}
+
+.runner-readiness.ok {
+  color: var(--ok);
+}
+
+.runner-readiness.warn {
+  color: var(--warn);
+}
+
+.runner-readiness.fail {
+  color: var(--danger);
+}
+
+.runner-preview-note {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: start;
+  gap: 7px;
+  padding: 8px 9px;
+  border: 1px solid var(--line-soft);
+  border-radius: 8px;
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.runner-preview-note svg {
+  margin-top: 2px;
+}
+
+.runner-preview-note.warn {
+  color: #fde68a;
+  border-color: rgba(251, 191, 36, 0.2);
+  background: rgba(251, 191, 36, 0.07);
+}
+
+.runner-preview-note.fail {
+  color: #fecaca;
+  border-color: rgba(248, 113, 113, 0.22);
+  background: rgba(248, 113, 113, 0.08);
+}
+
 .runner-config-list {
   display: grid;
   gap: 8px;

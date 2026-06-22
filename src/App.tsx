@@ -44,12 +44,14 @@ type ConfigRunner = {
   kind: string;
   session: string;
   tmux?: {
-    mode?: "wsl" | "native";
+    mode?: RunnerMode;
     cwd?: string;
     startCommand?: string;
     dismissCodexUpdatePrompt?: boolean;
   };
 };
+
+type RunnerMode = "wsl" | "native";
 
 type ConfigProject = {
   id: string;
@@ -789,17 +791,24 @@ function toWslPathClient(path: string) {
   return `/mnt/${match[1].toLowerCase()}/${match[2]}`;
 }
 
-function runnerDefaults(project: Project | undefined, type: string) {
+function runnerCwdForMode(path: string, mode: RunnerMode) {
+  if (mode === "wsl") return toWslPathClient(path);
+  return path.trim();
+}
+
+function runnerDefaults(project: Project | undefined, type: string, mode: RunnerMode) {
   const projectId = project?.id || "project";
   const projectPath = project?.path || "";
-  const cwd = toWslPathClient(projectPath);
+  const cwd = runnerCwdForMode(projectPath, mode);
+  const target = cwd || ".";
+  const withWslShell = (command: string) => `bash -lc 'cd ${target} && ${command}'`;
   if (type === "claude-code") {
     return {
       id: "claude-code",
       name: "Claude Code tmux",
       session: `rc-${projectId}`,
       cwd,
-      startCommand: `bash -lc 'cd ${cwd || "."} && claude'`
+      startCommand: mode === "wsl" ? withWslShell("claude") : "claude"
     };
   }
   if (type === "codex-cli") {
@@ -808,7 +817,10 @@ function runnerDefaults(project: Project | undefined, type: string) {
       name: "Codex CLI tmux",
       session: `rc-codex-${projectId}`,
       cwd,
-      startCommand: `bash -lc 'cd ${cwd || "."} && codex --no-alt-screen --dangerously-bypass-approvals-and-sandbox -C ${cwd || "."}'`
+      startCommand:
+        mode === "wsl"
+          ? withWslShell(`codex --no-alt-screen --dangerously-bypass-approvals-and-sandbox -C ${target}`)
+          : `codex --no-alt-screen --dangerously-bypass-approvals-and-sandbox -C ${target}`
     };
   }
   return {
@@ -816,7 +828,7 @@ function runnerDefaults(project: Project | undefined, type: string) {
     name: "Custom tmux",
     session: `rc-${projectId}-custom`,
     cwd,
-    startCommand: `bash -lc 'cd ${cwd || "."} && echo \"configure this runner\"'`
+    startCommand: mode === "wsl" ? withWslShell('echo "configure this runner"') : 'echo "configure this runner"'
   };
 }
 
@@ -870,6 +882,8 @@ export function App() {
   const [newProjectName, setNewProjectName] = useState("");
   const [newProjectPath, setNewProjectPath] = useState("");
   const [runnerType, setRunnerType] = useState("claude-code");
+  const [runnerMode, setRunnerMode] = useState<RunnerMode>("wsl");
+  const [runnerModeTouched, setRunnerModeTouched] = useState(false);
   const [runnerSession, setRunnerSession] = useState("");
   const [runnerCwd, setRunnerCwd] = useState("");
   const [runnerStartCommand, setRunnerStartCommand] = useState("");
@@ -912,6 +926,13 @@ export function App() {
 
   const setup = cleanSetupCopy[lang];
 
+  const recommendedRunnerMode = useMemo<RunnerMode>(() => (doctor?.platform === "win32" ? "wsl" : "native"), [doctor?.platform]);
+
+  useEffect(() => {
+    if (!doctor?.platform || runnerModeTouched) return;
+    setRunnerMode(recommendedRunnerMode);
+  }, [doctor?.platform, recommendedRunnerMode, runnerModeTouched]);
+
   const commandRunner = useMemo(() => {
     return runners.find((runner) => runner.id === commandRunnerId) || runners.find((runner) => runner.state === "running") || runners[0];
   }, [runners, commandRunnerId]);
@@ -941,7 +962,54 @@ export function App() {
       .filter(Boolean).length;
   }, [git?.status]);
 
-  const runnerPreset = useMemo(() => runnerDefaults(activeProject, runnerType), [activeProject, runnerType]);
+  const runnerPreset = useMemo(() => runnerDefaults(activeProject, runnerType, runnerMode), [activeProject, runnerMode, runnerType]);
+
+  const runnerPreview = useMemo(() => {
+    const session = (runnerSession || runnerPreset.session).trim();
+    const cwd = (runnerCwd || runnerPreset.cwd).trim();
+    const startCommand = (runnerStartCommand || runnerPreset.startCommand).trim();
+    const configuredRunners = activeConfigProject?.runners || [];
+    const duplicateId = configuredRunners.some((runner) => runner.id === runnerPreset.id);
+    const duplicateSession = configuredRunners.some((runner) => runner.session === session);
+    const readinessCheck =
+      runnerMode === "wsl"
+        ? doctorById.get("wsl-tmux-smoke") || doctorById.get("wsl-tmux") || doctorById.get("wsl")
+        : doctorById.get("tmux-smoke") || doctorById.get("tmux");
+    const warnings: string[] = [];
+    const blockers: string[] = [];
+
+    if (duplicateId) blockers.push(`Runner id "${runnerPreset.id}" already exists. Remove it before adding a replacement.`);
+    if (duplicateSession) blockers.push(`tmux session "${session}" is already configured for this project.`);
+    if (!cwd) warnings.push("Set a tmux cwd before starting this runner.");
+    if (cwd && looksLikePlaceholderPath(cwd)) warnings.push("Replace the placeholder cwd with a real project path.");
+    if (runnerMode === "wsl" && /^[A-Za-z]:[\\/]/.test(cwd)) warnings.push("WSL mode expects a Linux path such as /mnt/c/Users/you/MyApp.");
+    if (runnerMode === "native" && cwd.startsWith("/mnt/")) warnings.push("Native mode expects the path style from the host running tmux.");
+    if (!readinessCheck) warnings.push("Run Doctor after saving to verify tmux and agent CLI availability.");
+    if (readinessCheck?.status === "warn") warnings.push(`${readinessCheck.label}: ${readinessCheck.detail}`);
+    if (readinessCheck?.status === "fail") blockers.push(`${readinessCheck.label}: ${readinessCheck.detail}`);
+
+    return {
+      blockers,
+      cwd,
+      hostPath: activeProject?.path || "",
+      readinessCheck,
+      session,
+      startCommand,
+      warnings
+    };
+  }, [
+    activeConfigProject?.runners,
+    activeProject?.path,
+    doctorById,
+    runnerCwd,
+    runnerMode,
+    runnerPreset.cwd,
+    runnerPreset.id,
+    runnerPreset.session,
+    runnerPreset.startCommand,
+    runnerSession,
+    runnerStartCommand
+  ]);
 
   const selectedEvidence = useMemo(() => {
     return evidence.find((item) => item.id === selectedEvidenceId) || evidence[0];
@@ -2097,9 +2165,8 @@ export function App() {
 
   async function addRunnerConfig() {
     if (!activeProject) return;
-    const session = (runnerSession || runnerPreset.session).trim();
-    const cwd = (runnerCwd || runnerPreset.cwd).trim();
-    const startCommand = (runnerStartCommand || runnerPreset.startCommand).trim();
+    if (runnerPreview.blockers.length) return;
+    const { cwd, session, startCommand } = runnerPreview;
     await postConfigAction(
       {
         action: "add-runner",
@@ -2110,7 +2177,7 @@ export function App() {
         session,
         cwd,
         startCommand,
-        mode: "wsl",
+        mode: runnerMode,
         dismissCodexUpdatePrompt: runnerType === "codex-cli"
       },
       activeProject.id
@@ -2947,6 +3014,24 @@ export function App() {
               <option value="codex-cli">Codex CLI tmux</option>
               <option value="custom">Custom tmux</option>
             </select>
+            <div className="runner-mode-row">
+              <label>
+                <span>Runner mode</span>
+                <select
+                  value={runnerMode}
+                  onChange={(event) => {
+                    setRunnerMode(event.target.value as RunnerMode);
+                    setRunnerModeTouched(true);
+                  }}
+                >
+                  <option value="wsl">WSL tmux</option>
+                  <option value="native">Native tmux</option>
+                </select>
+              </label>
+              <span className={cx("runner-mode-badge", runnerMode === recommendedRunnerMode ? "safe" : "warn")}>
+                {runnerMode === recommendedRunnerMode ? "Recommended" : "Manual"}
+              </span>
+            </div>
             <input data-onboarding-target="runner" value={runnerSession} onChange={(event) => setRunnerSession(event.target.value)} placeholder={runnerPreset.session} />
             <input value={runnerCwd} onChange={(event) => setRunnerCwd(event.target.value)} placeholder={runnerPreset.cwd || "tmux cwd"} />
             <textarea
@@ -2954,7 +3039,33 @@ export function App() {
               onChange={(event) => setRunnerStartCommand(event.target.value)}
               placeholder={runnerPreset.startCommand}
             />
-            <button disabled={!!configBusy || !activeProject} onClick={() => void addRunnerConfig()}>
+            <div className="runner-preview">
+              <div>
+                <span>Host path</span>
+                <code>{runnerPreview.hostPath || "No project path"}</code>
+              </div>
+              <div>
+                <span>tmux cwd</span>
+                <code>{runnerPreview.cwd || "Not set"}</code>
+              </div>
+              <div>
+                <span>Start command</span>
+                <code>{runnerPreview.startCommand || "Not set"}</code>
+              </div>
+              <div>
+                <span>Readiness</span>
+                <strong className={cx("runner-readiness", runnerPreview.readinessCheck?.status || "warn")}>
+                  {runnerPreview.readinessCheck?.status || "pending"}
+                </strong>
+              </div>
+            </div>
+            {[...runnerPreview.blockers, ...runnerPreview.warnings].map((message) => (
+              <div className={cx("runner-preview-note", runnerPreview.blockers.includes(message) ? "fail" : "warn")} key={message}>
+                {runnerPreview.blockers.includes(message) ? <AlertTriangle size={13} /> : <CircleDot size={13} />}
+                <span>{message}</span>
+              </div>
+            ))}
+            <button disabled={!!configBusy || !activeProject || runnerPreview.blockers.length > 0} onClick={() => void addRunnerConfig()}>
               <Plus size={13} />
               Add Runner
             </button>

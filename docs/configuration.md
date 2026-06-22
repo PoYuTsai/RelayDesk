@@ -75,6 +75,10 @@ project name. Claude Code's `/remote-control` and `/rc` are official commands,
 but a tmux session name such as `rc-my-project` is still just your local naming
 choice.
 
+The Project Manager form writes these same fields. It recommends `wsl` on
+Windows and `native` elsewhere, then shows the host project path, the tmux cwd
+that will be saved, and the exact start command before you add the runner.
+
 ## Windows + WSL
 
 Use:
@@ -90,6 +94,8 @@ wsl.exe --exec tmux ...
 ```
 
 Use WSL paths in `tmux.cwd` and inside `startCommand`.
+For example, `C:\Users\you\Desktop\MyApp` becomes
+`/mnt/c/Users/you/Desktop/MyApp` in the runner preview.
 
 ## macOS/Linux
 

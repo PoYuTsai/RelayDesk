@@ -140,10 +140,18 @@ Use Project Manager to edit `relay.local.json` from the browser:
 - Add a project name and path.
 - Remove a project from RelayDesk config.
 - Add a Claude Code, Codex CLI, or custom tmux runner session.
+- Pick WSL tmux or native tmux before adding a runner.
+- Preview the host path, tmux cwd, and start command before saving.
 - Remove runner session config.
 
 Project Manager changes config only. It does not delete folders and does not
 kill running tmux sessions.
+
+On Windows, WSL tmux is usually the beginner-friendly choice because the agent
+CLI can live inside WSL and RelayDesk can convert `C:\...` paths into
+`/mnt/c/...` paths for the runner preview. On macOS/Linux, native tmux is the
+normal choice. If you run Windows-native tmux yourself, switch the runner mode
+to native and use Windows paths.
 
 ## 7. Manage RelayDesk sessions
 

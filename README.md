@@ -284,6 +284,7 @@ You can edit common config from the Project Manager card:
 - add a project path;
 - remove a project from RelayDesk config;
 - add Claude Code, Codex CLI, or custom tmux runner sessions;
+- choose WSL tmux or native tmux and preview the saved cwd/command;
 - remove runner session config.
 
 Removing a project or runner from Project Manager does not delete project files
