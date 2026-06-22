@@ -1752,9 +1752,19 @@ function runnerDefaults(project: Project | undefined, type: string, mode: Runner
   const cwd = runnerCwdForMode(projectPath, mode);
   const target = cwd || ".";
   const withWslShell = (command: string) => `bash -lc ${singleQuote(`cd ${doubleQuote(target)} && ${command}`)}`;
-  const codexBinary = codexBinaryPath ? (mode === "wsl" ? toWslPathClient(codexBinaryPath) : codexBinaryPath) : "codex";
-  const codexProjectPath = codexBinaryPath && mode === "wsl" ? windowsForwardPath(projectPath) : target;
-  const codexCommand = `${mode === "wsl" ? "export TERM=xterm-256color; " : ""}${doubleQuote(codexBinary)} --model gpt-5.5 --no-alt-screen --dangerously-bypass-approvals-and-sandbox -C ${doubleQuote(codexProjectPath || target)}`;
+  const codexUsesWindowsBinary = Boolean(codexBinaryPath && mode === "wsl");
+  const codexBinary = codexBinaryPath
+    ? codexUsesWindowsBinary
+      ? codexBinaryPath
+      : mode === "wsl"
+        ? toWslPathClient(codexBinaryPath)
+        : codexBinaryPath
+    : "codex";
+  const codexProjectPath = codexUsesWindowsBinary ? windowsForwardPath(projectPath) : target;
+  const codexArgs = `--model gpt-5.5 --no-alt-screen --dangerously-bypass-approvals-and-sandbox -C ${doubleQuote(codexProjectPath || target)}`;
+  const codexCommand = codexUsesWindowsBinary
+    ? `/mnt/c/Windows/System32/cmd.exe /d /s /c set TERM=xterm-256color\\&\\& ${doubleQuote(windowsForwardPath(codexBinary))} ${codexArgs}`
+    : `${mode === "wsl" ? "export TERM=xterm-256color; " : ""}${doubleQuote(codexBinary)} ${codexArgs}`;
   const claudeCommand = agentPresets.claude.ultraCode.command;
   if (type === "claude-code") {
     return {

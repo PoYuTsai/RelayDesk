@@ -1472,7 +1472,7 @@ function windowsCommandLineQuote(value) {
   return `"${text.replace(/"/g, '\\"')}"`;
 }
 
-function runCommand(argv, cwd, timeoutMs = 15000) {
+function runCommand(argv, cwd, timeoutMs = 15000, options = {}) {
   return new Promise((resolveCommand) => {
     if (!Array.isArray(argv) || !argv.length || argv.some((part) => typeof part !== "string")) {
       resolveCommand({ ok: false, code: -1, stdout: "", stderr: "Command must be an argv string array." });
@@ -1505,6 +1505,10 @@ function runCommand(argv, cwd, timeoutMs = 15000) {
     child.stderr.on("data", (data) => {
       stderr += data.toString();
     });
+    if (options.input !== undefined) {
+      child.stdin?.write(String(options.input));
+      child.stdin?.end();
+    }
     child.on("error", (error) => {
       clearTimeout(timer);
       resolveCommand({ ok: false, code: -1, stdout, stderr: String(error) });
@@ -1518,6 +1522,31 @@ function runCommand(argv, cwd, timeoutMs = 15000) {
 
 function sleep(ms) {
   return new Promise((resolveSleep) => setTimeout(resolveSleep, ms));
+}
+
+function shellQuotesAreBalanced(command) {
+  let quote = "";
+  let escaped = false;
+  for (const char of String(command || "")) {
+    if (escaped) {
+      escaped = false;
+      continue;
+    }
+    if (char === "\\" && quote !== "'") {
+      escaped = true;
+      continue;
+    }
+    if (!quote && (char === "'" || char === '"')) {
+      quote = char;
+      continue;
+    }
+    if (quote === char) quote = "";
+  }
+  return !quote && !escaped;
+}
+
+function startupLooksFailed(output) {
+  return /(command not found|No such file or directory|is not recognized|不是內部或外部命令|不是可執行的程式|not a valid identifier)/i.test(String(output || ""));
 }
 
 function spawnDetached(argv, cwd) {
@@ -1595,6 +1624,10 @@ async function runTmux(project, runner, args, timeoutMs = 10000) {
   return runCommand(tmuxArgs(runner, args), runnerCwd(project, runner), timeoutMs);
 }
 
+async function runTmuxWithInput(project, runner, args, input, timeoutMs = 10000) {
+  return runCommand(tmuxArgs(runner, args), runnerCwd(project, runner), timeoutMs, { input });
+}
+
 async function tmuxStatus(project, runner) {
   const result = await runTmux(project, runner, ["has-session", "-t", runner.session], 8000);
   const missingServer = /error connecting to .*tmux.*No such file or directory/i.test(result.stderr || "");
@@ -1618,13 +1651,49 @@ async function startTmuxRunner(project, runner) {
   if (!startCommand) {
     return { ok: false, code: -1, stdout: "", stderr: "tmux.startCommand is not configured." };
   }
+  if (!shellQuotesAreBalanced(startCommand)) {
+    return {
+      ok: false,
+      code: -1,
+      stdout: "",
+      stderr: "tmux.startCommand has unbalanced shell quotes. Fix the runner command before starting."
+    };
+  }
   const cwd = runner.tmux?.cwd || project.path;
   const args = ["new-session", "-d", "-s", runner.session];
   if (cwd) args.push("-c", cwd);
-  args.push(startCommand);
   const result = await runTmux(project, runner, args, 15000);
-  if (result.ok) await dismissStartupPrompts(project, runner);
-  return result;
+  if (!result.ok) return result;
+
+  const launched = await pasteTextAndEnter(project, runner, startCommand, 15000);
+  await sleep(1200);
+  const nextStatus = await tmuxStatus(project, runner);
+  const capture = await captureTmuxRunner(project, runner).catch(() => ({ ok: false, stdout: "", stderr: "" }));
+  if (startupLooksFailed([capture.stdout, capture.stderr].filter(Boolean).join("\n"))) {
+    return {
+      ok: false,
+      code: -1,
+      stdout: [launched.stdout, capture.stdout].filter(Boolean).join("\n"),
+      stderr: [launched.stderr, capture.stderr || "Runner startup command failed."].filter(Boolean).join("\n")
+    };
+  }
+  if (nextStatus.state !== "running") {
+    return {
+      ok: false,
+      code: nextStatus.code,
+      stdout: [launched.stdout, capture.stdout].filter(Boolean).join("\n"),
+      stderr: [launched.stderr, capture.stderr, nextStatus.lastOutput || "Runner exited immediately after start."].filter(Boolean).join("\n")
+    };
+  }
+
+  await dismissStartupPrompts(project, runner);
+  const finalCapture = await captureTmuxRunner(project, runner).catch(() => capture);
+  return {
+    ok: launched.ok,
+    code: launched.code,
+    stdout: [launched.stdout, finalCapture.stdout].filter(Boolean).join("\n"),
+    stderr: [launched.stderr, finalCapture.stderr].filter(Boolean).join("\n")
+  };
 }
 
 async function stopTmuxRunner(project, runner) {
@@ -1635,18 +1704,26 @@ async function captureTmuxRunner(project, runner) {
   return runTmux(project, runner, ["capture-pane", "-p", "-S", "-200", "-t", runner.session], 10000);
 }
 
-async function sendTmuxRunner(project, runner, text) {
-  const value = String(text || "").trim();
-  if (!value) return { ok: false, code: -1, stdout: "", stderr: "No text to send." };
-  const typed = await runTmux(project, runner, ["send-keys", "-l", "-t", runner.session, "--", value], 10000);
+async function pasteTextAndEnter(project, runner, text, timeoutMs = 10000) {
+  const value = String(text ?? "").replace(/\r\n/g, "\n");
+  if (!value.trim()) return { ok: false, code: -1, stdout: "", stderr: "No text to send." };
+  const buffer = `relaydesk-${process.pid}-${Date.now()}-${Math.random().toString(16).slice(2)}`;
+  const loaded = await runTmuxWithInput(project, runner, ["load-buffer", "-b", buffer, "-"], value, timeoutMs);
+  if (!loaded.ok) return loaded;
+  const pasted = await runTmux(project, runner, ["paste-buffer", "-b", buffer, "-t", runner.session], timeoutMs);
+  await runTmux(project, runner, ["delete-buffer", "-b", buffer], timeoutMs).catch(() => undefined);
   await sleep(120);
-  const enter = typed.ok ? await runTmux(project, runner, ["send-keys", "-t", runner.session, "Enter"], 10000) : typed;
+  const enter = pasted.ok ? await runTmux(project, runner, ["send-keys", "-t", runner.session, "Enter"], timeoutMs) : pasted;
   return {
-    ok: typed.ok && enter.ok,
+    ok: loaded.ok && pasted.ok && enter.ok,
     code: enter.code,
-    stdout: [typed.stdout, enter.stdout].filter(Boolean).join("\n"),
-    stderr: [typed.stderr, enter.stderr].filter(Boolean).join("\n")
+    stdout: [loaded.stdout, pasted.stdout, enter.stdout].filter(Boolean).join("\n"),
+    stderr: [loaded.stderr, pasted.stderr, enter.stderr].filter(Boolean).join("\n")
   };
+}
+
+async function sendTmuxRunner(project, runner, text) {
+  return pasteTextAndEnter(project, runner, text, 10000);
 }
 
 const tmuxKeyMap = new Map([
@@ -1678,10 +1755,15 @@ async function sendTmuxKeyRunner(project, runner, key) {
 async function dismissStartupPrompts(project, runner) {
   if (!runner.tmux?.dismissCodexUpdatePrompt) return;
   await sleep(2500);
-  const capture = await captureTmuxRunner(project, runner);
-  if (/Update available![\s\S]*Skip until next version/i.test(capture.stdout || "")) {
-    await runTmux(project, runner, ["send-keys", "-t", runner.session, "--", "3", "Enter"], 10000);
-    await sleep(1200);
+  for (let attempt = 0; attempt < 4; attempt += 1) {
+    const capture = await captureTmuxRunner(project, runner);
+    const output = capture.stdout || "";
+    if (/Update available![\s\S]*Skip until next version/i.test(output)) {
+      await runTmux(project, runner, ["send-keys", "-t", runner.session, "3", "Enter"], 10000);
+      await sleep(1400);
+      continue;
+    }
+    break;
   }
 }
 
