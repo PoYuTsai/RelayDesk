@@ -1,13 +1,16 @@
 import { createServer } from "node:http";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { existsSync } from "node:fs";
-import { dirname, join, resolve, sep } from "node:path";
+import { dirname, extname, join, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 import { spawn } from "node:child_process";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const root = resolve(here, "..");
+const dataRoot = resolve(process.env.RELAYDESK_DATA_DIR || root);
+const staticRoot = resolve(process.env.RELAYDESK_STATIC_DIR || join(root, "dist"));
 const port = Number(process.env.RELAYDESK_PORT || 8791);
+const host = process.env.RELAYDESK_HOST || "127.0.0.1";
 
 const defaultConfig = {
   projects: [
@@ -21,7 +24,7 @@ const defaultConfig = {
 };
 
 async function loadConfig() {
-  const local = join(root, "relay.local.json");
+  const local = localConfigPath();
   const example = join(root, "relay.config.example.json");
   const path = existsSync(local) ? local : existsSync(example) ? example : "";
   if (!path) return defaultConfig;
@@ -33,7 +36,7 @@ async function loadConfig() {
 }
 
 function localConfigPath() {
-  return join(root, "relay.local.json");
+  return join(dataRoot, "relay.local.json");
 }
 
 function editableConfig(config) {
@@ -79,6 +82,7 @@ function defaultRunner(project, body) {
 
 async function writeLocalConfig(config) {
   const next = editableConfig(config);
+  await mkdir(dataRoot, { recursive: true });
   await writeFile(localConfigPath(), `${JSON.stringify(next, null, 2)}\n`, "utf8");
   return next;
 }
@@ -146,6 +150,57 @@ function notFound(res) {
   json(res, 404, { error: "not found" });
 }
 
+const staticMimeTypes = {
+  ".css": "text/css; charset=utf-8",
+  ".html": "text/html; charset=utf-8",
+  ".ico": "image/x-icon",
+  ".js": "text/javascript; charset=utf-8",
+  ".json": "application/json; charset=utf-8",
+  ".png": "image/png",
+  ".svg": "image/svg+xml; charset=utf-8",
+  ".txt": "text/plain; charset=utf-8",
+  ".webp": "image/webp"
+};
+
+function isInsideDir(file, dir) {
+  const boundary = dir.endsWith(sep) ? dir : `${dir}${sep}`;
+  return file === dir || file.startsWith(boundary);
+}
+
+async function sendStaticFile(req, res, file) {
+  const data = await readFile(file);
+  res.writeHead(200, {
+    "content-type": staticMimeTypes[extname(file).toLowerCase()] || "application/octet-stream",
+    "cache-control": file.includes(`${sep}assets${sep}`) ? "public, max-age=31536000, immutable" : "no-store"
+  });
+  res.end(req.method === "HEAD" ? undefined : data);
+}
+
+async function serveStatic(req, res, url) {
+  if (!["GET", "HEAD"].includes(req.method || "")) return false;
+  if (url.pathname.startsWith("/api/")) return false;
+
+  const decodedPath = decodeURIComponent(url.pathname);
+  const relativePath = decodedPath === "/" ? "index.html" : decodedPath.replace(/^\/+/, "");
+  const requestedFile = resolve(staticRoot, relativePath);
+  if (!isInsideDir(requestedFile, staticRoot)) return false;
+
+  try {
+    await sendStaticFile(req, res, requestedFile);
+    return true;
+  } catch {
+    if (extname(relativePath)) return false;
+    const fallback = resolve(staticRoot, "index.html");
+    if (!isInsideDir(fallback, staticRoot)) return false;
+    try {
+      await sendStaticFile(req, res, fallback);
+      return true;
+    } catch {
+      return false;
+    }
+  }
+}
+
 async function readBody(req) {
   const chunks = [];
   for await (const chunk of req) chunks.push(chunk);
@@ -162,7 +217,7 @@ function findRunner(project, id) {
 }
 
 function configSource() {
-  const local = join(root, "relay.local.json");
+  const local = localConfigPath();
   const example = join(root, "relay.config.example.json");
   if (existsSync(local)) return { path: local, kind: "local" };
   if (existsSync(example)) return { path: example, kind: "example" };
@@ -177,11 +232,11 @@ function safeSegment(value) {
 }
 
 function evidenceDir(project) {
-  return resolve(root, ".relaydesk", "evidence", safeSegment(project.id));
+  return resolve(dataRoot, ".relaydesk", "evidence", safeSegment(project.id));
 }
 
 function sessionsFile() {
-  return resolve(root, ".relaydesk", "sessions.json");
+  return resolve(dataRoot, ".relaydesk", "sessions.json");
 }
 
 function emptySessionState(body = {}) {
@@ -1009,6 +1064,8 @@ async function route(req, res) {
     return;
   }
 
+  if (await serveStatic(req, res, url)) return;
+
   notFound(res);
 }
 
@@ -1016,6 +1073,7 @@ createServer((req, res) => {
   route(req, res).catch((error) => {
     json(res, 500, { error: String(error) });
   });
-}).listen(port, "127.0.0.1", () => {
-  console.log(`RelayDesk API listening on http://127.0.0.1:${port}`);
+}).listen(port, host, () => {
+  console.log(`RelayDesk listening on http://${host}:${port}`);
+  console.log(`RelayDesk data dir: ${dataRoot}`);
 });

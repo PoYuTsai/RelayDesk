@@ -92,6 +92,24 @@ npm.cmd run dev
 
 Open [http://127.0.0.1:5177](http://127.0.0.1:5177).
 
+Production-style local serve:
+
+```powershell
+npm.cmd run serve
+```
+
+Open [http://127.0.0.1:8791](http://127.0.0.1:8791). This serves the built UI
+and API from the same local Node.js process.
+
+Optional Docker UI/API run:
+
+```bash
+docker compose up --build
+```
+
+Docker is for the RelayDesk UI/API packaging path. Use the native setup above
+when you need direct host tmux, terminal, and screen-capture integration.
+
 ## 5. Check readiness
 
 Look at the Doctor panel.

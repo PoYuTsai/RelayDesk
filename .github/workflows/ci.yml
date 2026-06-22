@@ -28,6 +28,9 @@ jobs:
       - name: Public scan
         run: npm run check:public
 
+      - name: Release check
+        run: npm run check:release
+
       - name: Server syntax
         run: node --check server/relay-server.mjs
 

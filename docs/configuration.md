@@ -4,6 +4,19 @@ RelayDesk reads runner configuration from `relay.local.json` first. If that file
 
 `relay.local.json` is private and must not be committed.
 
+By default, runtime data is stored in the repository root. Set
+`RELAYDESK_DATA_DIR` to move `relay.local.json` and `.relaydesk/` elsewhere,
+for example when running in Docker.
+
+Useful environment variables:
+
+| Variable | Default | Purpose |
+| --- | --- | --- |
+| `RELAYDESK_HOST` | `127.0.0.1` | API/static server bind address. |
+| `RELAYDESK_PORT` | `8791` | API/static server port. |
+| `RELAYDESK_DATA_DIR` | repo root | Runtime data directory. |
+| `RELAYDESK_STATIC_DIR` | `dist` | Static UI build directory served by the API server. |
+
 ## Project shape
 
 ```json

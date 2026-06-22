@@ -28,11 +28,20 @@ Docker recommendation:
   - optional `docker compose up` for UI/API only.
   - host runner adapters remain outside Docker.
 
+Current v1:
+
+- `Dockerfile` and `docker-compose.yml` run the built UI/API on one port.
+- `RELAYDESK_DATA_DIR` moves local runtime data outside the repo root for
+  container use.
+- Docker remains UI/API only by default; host tmux and desktop capture still use
+  native adapters.
+
 Open-source release checklist:
 
 - Verify `.gitignore` excludes `relay.local.json`, `.relaydesk/`, logs, env files, screenshots, and generated evidence.
 - Search for local paths, emails, tokens, API keys, project IDs, and private screenshots before publishing.
 - Ensure README never includes real user credentials or private repo paths.
+- Run `npm run check:release` before tagging or publishing a public release.
 
 ## 2. Beginner onboarding
 

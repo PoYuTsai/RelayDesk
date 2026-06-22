@@ -74,8 +74,11 @@ macOS/Linux users:
 
 Docker note:
 
-Docker can be useful for running the UI/API, but it is not the primary path yet.
-Agent CLIs, tmux, terminal windows, and screen capture need host integration.
+Docker can run the RelayDesk UI/API on one port for clean testing and packaging,
+but it is not the primary path for controlling agents. Agent CLIs, tmux,
+terminal windows, and screen capture still need host integration.
+
+See [Docker](docs/docker.md) for the optional container workflow.
 
 ## Quick Start
 
@@ -341,6 +344,7 @@ Saved snapshots go under `.relaydesk/evidence/`, which is gitignored.
 
 - [Getting Started](docs/getting-started.md)
 - [Configuration](docs/configuration.md)
+- [Docker](docs/docker.md)
 - [Slash Commands](docs/slash-commands.md)
 - [Compatibility](docs/compatibility.md)
 - [Release Checklist](docs/release-checklist.md)
@@ -356,6 +360,9 @@ GitHub Actions runs `npm ci`, `npm run check:public`,
 `npm run check:public` scans tracked files for private local paths, personal
 email addresses, common API key shapes, and bearer tokens. It does not scan
 ignored local runtime files such as `relay.local.json` or `.relaydesk/`.
+
+Before a public release, also run `npm run check:release` for required docs,
+gitignore, example-config, and public-scan checks.
 
 ## Security
 

@@ -1,0 +1,14 @@
+services:
+  relaydesk:
+    build: .
+    ports:
+      - "8791:8791"
+    environment:
+      RELAYDESK_HOST: 0.0.0.0
+      RELAYDESK_PORT: 8791
+      RELAYDESK_DATA_DIR: /data
+    volumes:
+      - relaydesk-data:/data
+
+volumes:
+  relaydesk-data:

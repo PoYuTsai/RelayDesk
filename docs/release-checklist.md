@@ -45,6 +45,7 @@ Review every changed file before publishing.
 npm.cmd run build
 node --check server/relay-server.mjs
 npm.cmd run check:public
+npm.cmd run check:release
 ```
 
 Start the API and verify:
@@ -82,6 +83,24 @@ Verify:
 - Snapshot button is visible.
 - No private image or log is shown by default.
 
+Production-style local serve:
+
+```powershell
+npm.cmd run serve
+```
+
+Open `http://127.0.0.1:8791` and repeat the same smoke checks.
+
+Optional Docker packaging smoke:
+
+```bash
+docker compose up --build
+```
+
+Open `http://127.0.0.1:8791`. Confirm the UI/API loads. Do not treat this as a
+host tmux integration test unless you intentionally mounted and configured host
+runner access.
+
 ## 6. Public repo hygiene
 
 Before creating the GitHub repo:
@@ -89,6 +108,7 @@ Before creating the GitHub repo:
 - Confirm the repo name and description.
 - Confirm license.
 - Confirm README and README.zh-TW are ready.
+- Confirm Docker docs are clear that Docker is UI/API only by default.
 - Confirm no local-only config is tracked.
 - Confirm GitHub Actions CI exists and runs the public scan.
 - Confirm screenshots in docs are safe for public use.

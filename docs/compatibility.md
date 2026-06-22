@@ -13,6 +13,7 @@ RelayDesk depends on local tools that can change over time. Keep compatibility e
 | tmux | 3.4 |
 | Claude Code | 2.1.183 |
 | Codex CLI | 0.132.0 |
+| Docker | Optional UI/API packaging path |
 
 ## Adapter notes
 
@@ -75,4 +76,5 @@ When an agent CLI changes:
 
 - Usage/token metrics are local activity metrics unless the agent exposes official usage data.
 - Snapshot OCR is not bundled yet.
-- Docker is not the primary runtime because runner control and screen capture require host integration.
+- Docker serves the UI/API and stores runtime data through `RELAYDESK_DATA_DIR`,
+  but host runner control and screen capture still require host integration.
