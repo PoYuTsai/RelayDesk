@@ -405,6 +405,7 @@ button {
   height: 52px;
   display: block;
   object-fit: contain;
+  border-radius: 13px;
 }
 
 .focus-agent-head strong,
@@ -641,6 +642,7 @@ button {
   height: 42px;
   display: block;
   object-fit: contain;
+  border-radius: 11px;
 }
 
 .composer-target-button {
@@ -878,6 +880,8 @@ button {
   height: auto;
   display: grid;
   justify-content: stretch;
+  justify-items: stretch;
+  text-align: left;
 }
 
 .focus-composer .composer-menu-row {
@@ -921,6 +925,7 @@ button {
   overflow: hidden;
   font-size: 14px;
   line-height: 1.25;
+  text-align: left;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -941,6 +946,7 @@ button {
   color: var(--muted);
   font-size: 11px;
   font-weight: 600;
+  text-align: left;
   text-overflow: ellipsis;
   white-space: normal;
 }
@@ -972,6 +978,7 @@ button {
   display: block;
   justify-self: center;
   object-fit: contain;
+  border-radius: 10px;
 }
 
 .effort-track {
@@ -1418,6 +1425,7 @@ button {
   height: 30px;
   display: block;
   object-fit: contain;
+  border-radius: 8px;
 }
 
 .runner-mini-avatar-wrap .runner-dot {

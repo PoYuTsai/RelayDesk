@@ -199,6 +199,7 @@ async function editConfig(config, body) {
     if (!project) throw new Error(`Project not found: ${body.projectId}`);
     const runner = (project.runners || []).find((item) => item.id === body.runnerId);
     if (!runner) throw new Error(`Runner not found: ${body.runnerId}`);
+    if (body.avatarUrl !== undefined) runner.avatarUrl = String(body.avatarUrl || "");
     if (body.model !== undefined) runner.model = String(body.model || "");
     if (body.accessMode !== undefined) runner.accessMode = String(body.accessMode || "");
     if (body.effortMode !== undefined) runner.effortMode = String(body.effortMode || "");
@@ -1638,6 +1639,7 @@ async function tmuxStatus(project, runner) {
     name: runner.name,
     kind: runner.kind,
     session: runner.session,
+    avatarUrl: runner.avatarUrl || "",
     state: result.ok ? "running" : "stopped",
     lastOutput: result.ok ? result.stdout : missingServer ? "No tmux server is running." : result.stderr,
     code: result.code
@@ -1839,7 +1841,7 @@ async function runnerStatus(project, runner) {
     return tmuxStatus(project, runner);
   }
   if (!runner.commands?.status) {
-    return { id: runner.id, name: runner.name, kind: runner.kind, session: runner.session, state: "unconfigured" };
+    return { id: runner.id, name: runner.name, kind: runner.kind, session: runner.session, avatarUrl: runner.avatarUrl || "", state: "unconfigured" };
   }
   const result = await runCommand(runner.commands.status, project.path, 8000);
   return {
@@ -1847,6 +1849,7 @@ async function runnerStatus(project, runner) {
     name: runner.name,
     kind: runner.kind,
     session: runner.session,
+    avatarUrl: runner.avatarUrl || "",
     state: result.ok ? "running" : "stopped",
     lastOutput: result.stdout || result.stderr,
     code: result.code

@@ -47,6 +47,7 @@ type ConfigRunner = {
   name: string;
   kind: string;
   session: string;
+  avatarUrl?: string;
   model?: string;
   accessMode?: string;
   effortMode?: string;
@@ -95,6 +96,7 @@ type Runner = {
   name: string;
   kind: string;
   session: string;
+  avatarUrl?: string;
   state: "running" | "stopped" | "unconfigured";
   lastOutput?: string;
   code?: number;
@@ -459,11 +461,13 @@ const aiRoomAvatar: AgentAvatarAsset = {
 };
 const agentAvatars: Record<string, AgentAvatarAsset> = {
   "claude-code": {
-    src: "/assets/agents/claude-code.svg",
+    src: "/assets/agents.local/claude-code.png",
+    fallbackSrc: "/assets/agents/claude-code.svg",
     alt: "Claude Code"
   },
   "codex-cli": {
-    src: "/assets/agents/codex.svg",
+    src: "/assets/agents.local/codex.png",
+    fallbackSrc: "/assets/agents/codex.svg",
     alt: "Codex"
   }
 };
@@ -687,8 +691,8 @@ const uiCopy: Record<
       runnerCount: (count) => `${count} runner${count === 1 ? "" : "s"}`,
       noRunners: "No runners configured.",
       loadingRunners: "Loading runners...",
-      writerPolicy: "Single writer policy",
-      writerPolicyDetail: "Only one agent should hold write permission during Build."
+      writerPolicy: "One builder per round",
+      writerPolicyDetail: "Pick the agent responsible for landing code in the current round."
     },
     workspace: {
       label: "Workspace",
@@ -699,8 +703,8 @@ const uiCopy: Record<
     trust: {
       label: "Agent Trust Bar",
       title: "Verify agent claims against disk",
-      detail: "Choose the active writer, then compare every agent claim with git and local runner activity.",
-      activeWriter: "Active writer",
+      detail: "Pick the current Builder, then compare agent claims with git and local runner activity.",
+      activeWriter: "Current Builder",
       noRunners: "No runners",
       diskVerify: "Disk verify",
       loadingDisk: "Loading disk state",
@@ -709,7 +713,7 @@ const uiCopy: Record<
       waitingGit: "Waiting for git context.",
       claimsNeedReview: "Claims still need review before merge.",
       reviewDisk: "Review git status before trusting agent output.",
-      writer: "writer",
+      writer: "Builder",
       sends: "sends",
       captures: "captures",
       snapshots: "snapshots",
@@ -717,7 +721,7 @@ const uiCopy: Record<
     },
     session: {
       label: "Session",
-      noWriter: "No writer",
+      noWriter: "No Builder",
       saved: "saved",
       noSaved: "No saved sessions",
       archived: "archived",
@@ -852,8 +856,8 @@ const uiCopy: Record<
       runnerCount: (count) => `${count} 個 runner`,
       noRunners: "尚未設定 runner。",
       loadingRunners: "載入 runner 中...",
-      writerPolicy: "單一寫入者",
-      writerPolicyDetail: "Build 階段只讓一個 agent 擁有寫入權。"
+      writerPolicy: "本輪 Builder",
+      writerPolicyDetail: "由你決定這一輪誰負責落 code；下一輪可以切換。"
     },
     workspace: {
       label: "工作區",
@@ -864,8 +868,8 @@ const uiCopy: Record<
     trust: {
       label: "信任檢查",
       title: "先驗證，再相信 agent 結論",
-      detail: "指定本輪寫入者，並用 git 與本機 runner 活動核對 agent 說法。",
-      activeWriter: "本輪寫入者",
+      detail: "指定本輪 Builder，並用 git 與本機 runner 活動核對 agent 說法。",
+      activeWriter: "本輪 Builder",
       noRunners: "沒有 runner",
       diskVerify: "磁碟狀態",
       loadingDisk: "讀取 git 狀態中",
@@ -874,7 +878,7 @@ const uiCopy: Record<
       waitingGit: "等待 git 狀態。",
       claimsNeedReview: "合併前仍需 review agent 結論。",
       reviewDisk: "相信 agent 前，先看 git status。",
-      writer: "寫入者",
+      writer: "Builder",
       sends: "送出",
       captures: "擷取",
       snapshots: "截圖",
@@ -882,7 +886,7 @@ const uiCopy: Record<
     },
     session: {
       label: "工作 session",
-      noWriter: "未指定寫入者",
+      noWriter: "未指定 Builder",
       saved: "已儲存",
       noSaved: "尚無已存 session",
       archived: "封存",
@@ -1483,7 +1487,7 @@ function buildSessionBrief(input: {
   return [
     `RelayDesk session: ${input.sessionKey}`,
     `Project: ${input.projectName}`,
-    `Active writer: ${input.writerName || "unassigned"}`,
+    `Current Builder: ${input.writerName || "unassigned"}`,
     `Task: ${input.task}`,
     `Git: ${input.git?.clean ? "clean" : "dirty or unknown"} (${input.git?.branch || "unknown branch"})`,
     `Runners: ${input.runners.map((runner) => `${runner.name}=${runner.state}`).join(", ") || "none"}`,
@@ -1693,8 +1697,19 @@ function runnerComposerName(runner: Runner | undefined) {
   return runner.id === "claude-code" ? "Claude Code" : runner.id === "codex-cli" ? "Codex" : shortRunnerName(runner.name);
 }
 
+function builderBadgeLabel(lang: Lang) {
+  return lang === "zh-TW" ? "本輪 Builder" : "Builder";
+}
+
 function runnerAvatar(runner: Runner | undefined) {
   if (!runner) return aiRoomAvatar;
+  if (runner.avatarUrl) {
+    return {
+      src: runner.avatarUrl,
+      fallbackSrc: agentAvatars[runner.id]?.fallbackSrc || aiRoomAvatar.src,
+      alt: runnerComposerName(runner) || "Agent"
+    };
+  }
   return agentAvatars[runner.id] || aiRoomAvatar;
 }
 
@@ -3145,6 +3160,7 @@ export function App() {
     if (!activeProject || !liveRunnerKey) return;
     const liveRunners = runners.filter((runner) => runner.state === "running");
     let cancelled = false;
+    let timer = 0;
 
     async function peekLiveRunners() {
       await Promise.all(
@@ -3160,13 +3176,18 @@ export function App() {
       );
     }
 
-    void peekLiveRunners();
-    const interval = window.setInterval(() => void peekLiveRunners(), 1200);
+    async function pump() {
+      await peekLiveRunners();
+      if (cancelled) return;
+      timer = window.setTimeout(() => void pump(), busyRunner ? 650 : 900);
+    }
+
+    void pump();
     return () => {
       cancelled = true;
-      window.clearInterval(interval);
+      window.clearTimeout(timer);
     };
-  }, [activeProject?.id, liveRunnerKey]);
+  }, [activeProject?.id, liveRunnerKey, busyRunner]);
 
   useEffect(() => {
     const frame = window.requestAnimationFrame(() => {
@@ -3220,6 +3241,9 @@ export function App() {
       );
       if (result.ok !== false) {
         options.onSuccess?.();
+        if (action === "open") {
+          scheduleRunnerPeeks({ ...runner, state: "running" }, [700, 1600, 3200, 6400]);
+        }
         if (action === "send" && !options.suppressBusEvent) {
           appendBusEvent({
             kind: "message",
@@ -4663,7 +4687,7 @@ export function App() {
           {focusRunners.map((runner) => {
             const row = usageByRunner.get(runner.id);
             const isSelected = composerTargetIsBoth || selectedRunnerForComposer?.id === runner.id;
-            const isWriter = writerRunner?.id === runner.id;
+            const isBuilder = !composerTargetIsBoth && selectedRunnerForComposer?.id === runner.id;
             const avatar = runnerAvatar(runner);
             const configRunner = findConfigRunner(activeConfigProject, runner);
             const startSummary = runnerStartSummary(configRunner);
@@ -4701,7 +4725,7 @@ export function App() {
                     </div>
                   </div>
                   <div>
-                    {isWriter && <em>{ui.trust.writer}</em>}
+                    {isBuilder && <em>{builderBadgeLabel(lang)}</em>}
                     {remote && <span className={cx("remote-badge", remote.status)}>{remote.label}</span>}
                     <RunnerDot state={runner.state} />
                   </div>
@@ -4796,7 +4820,7 @@ export function App() {
                     <AgentAvatar className="composer-menu-avatar" asset={aiRoomAvatar} />
                       <span>
                         <strong>Both</strong>
-                        <small>{lang === "zh-TW" ? "同步送給兩邊" : "Send to both agents"}</small>
+                        <small>{lang === "zh-TW" ? "同一段訊息送給兩邊" : "Same message to both agents"}</small>
                       </span>
                     {composerTargetIsBoth && <Check size={14} />}
                   </button>
@@ -4817,7 +4841,7 @@ export function App() {
                       <AgentAvatar className="composer-menu-avatar" asset={avatar} />
                       <span>
                         <strong>{runnerComposerName(runner)}</strong>
-                        <small className="tmux-label">tmux {runner.session}</small>
+                        <small className="tmux-label">{runner.session}</small>
                       </span>
                       {selected && <Check size={14} />}
                     </button>
@@ -5300,8 +5324,8 @@ export function App() {
         <section className="side-section risk-box">
           <ShieldCheck size={16} />
           <div>
-            <strong>Single writer policy</strong>
-            <p>Only one agent should hold write permission during Build.</p>
+            <strong>One builder per round</strong>
+            <p>Pick the agent responsible for landing code in the current round.</p>
           </div>
         </section>
       </aside>
