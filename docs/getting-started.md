@@ -101,7 +101,14 @@ You want:
 - `0 fail`.
 - No missing project paths.
 - Claude/Codex available if you configured those runners.
+- A passing tmux smoke check for the environment you use.
+- Unique tmux session names for every runner.
 - `.relaydesk/` and `relay.local.json` ignored by git.
+
+Doctor does more than version checks. When tmux is configured, it creates a
+temporary `relaydesk-doctor-*` tmux session, sends a short command, captures the
+pane, and kills that temporary session. This verifies that Start, Send, Capture,
+and Stop have a real chance of working before you launch a long agent task.
 
 The Setup card can be switched between English and Traditional Chinese. It shows
 the same readiness state in a shorter beginner-friendly form and includes copy

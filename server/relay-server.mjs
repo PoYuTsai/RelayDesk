@@ -12,15 +12,9 @@ const port = Number(process.env.RELAYDESK_PORT || 8791);
 const defaultConfig = {
   projects: [
     {
-      id: "vibesync",
-      name: "VibeSync",
-      path: "C:\\Users\\eric1\\OneDrive\\Desktop\\VibeSync",
-      runners: []
-    },
-    {
-      id: "travelapp",
-      name: "TravelAPP",
-      path: "C:\\Users\\eric1\\OneDrive\\Desktop\\TravelAPP",
+      id: "my-app",
+      name: "My App",
+      path: "C:\\path\\to\\MyApp",
       runners: []
     }
   ]
@@ -380,15 +374,88 @@ async function wslCheck(id, label, script, fix = "", level = "fail") {
   return commandCheck(id, label, ["wsl.exe", "--exec", "bash", "-lc", script], root, fix, level);
 }
 
+function shellQuote(value) {
+  return `'${String(value).replace(/'/g, "'\\''")}'`;
+}
+
 function usesWsl(config) {
   return (config.projects || []).some((project) =>
     (project.runners || []).some((runner) => runner.kind === "tmux" && (runner.tmux?.mode || "wsl") === "wsl")
   );
 }
 
+function usesNativeTmux(config) {
+  return (config.projects || []).some((project) =>
+    (project.runners || []).some((runner) => runner.kind === "tmux" && (runner.tmux?.mode || "wsl") === "native")
+  );
+}
+
 function hasRunnerCommand(config, command) {
   return (config.projects || []).some((project) =>
     (project.runners || []).some((runner) => JSON.stringify(runner).toLowerCase().includes(command.toLowerCase()))
+  );
+}
+
+function runnerSessionUniqueness(config) {
+  const seen = new Map();
+  const duplicates = [];
+  for (const project of config.projects || []) {
+    for (const runner of project.runners || []) {
+      if (!runner.session) continue;
+      const key = String(runner.session);
+      const label = `${project.name || project.id}/${runner.name || runner.id}`;
+      if (seen.has(key)) {
+        duplicates.push(`${key}: ${seen.get(key)} + ${label}`);
+      } else {
+        seen.set(key, label);
+      }
+    }
+  }
+  return check(
+    "runner-session-unique",
+    "Runner session names unique",
+    duplicates.length === 0,
+    duplicates.length ? duplicates.join("\n") : "Every configured runner uses a distinct tmux session.",
+    "Use one unique tmux session name per runner."
+  );
+}
+
+async function runnerCwdCheck(project, runner) {
+  const mode = runner.tmux?.mode || "wsl";
+  const cwd = String(runner.tmux?.cwd || project.path || "").trim();
+  const id = `runner-cwd-${safeSegment(project.id)}-${safeSegment(runner.id)}`;
+  const label = `${project.name} / ${runner.name} cwd`;
+  if (!cwd) return check(id, label, false, "No tmux cwd configured.", "Set tmux.cwd to the project path visible inside the runner environment.");
+  if (mode === "wsl") {
+    return wslCheck(id, label, `test -d ${shellQuote(cwd)} && printf ${shellQuote(cwd)}`, "Set tmux.cwd to a valid WSL path such as /mnt/c/path/to/project.");
+  }
+  return check(id, label, existsSync(cwd), cwd, "Set tmux.cwd to an existing path for native tmux.");
+}
+
+async function tmuxSmokeCheck(id, label, mode, fix = "") {
+  const session = `relaydesk-doctor-${process.pid}-${Date.now()}`;
+  const base = mode === "native" ? ["tmux"] : ["wsl.exe", "--exec", "tmux"];
+  const tmux = (args, timeoutMs = 10000) => runCommand([...base, ...args], root, timeoutMs);
+  await tmux(["kill-session", "-t", session], 5000).catch(() => undefined);
+
+  const start = await tmux(["new-session", "-d", "-s", session], 10000);
+  if (!start.ok) {
+    return check(id, label, false, start.stdout || start.stderr, fix || "Ensure tmux can create detached sessions.");
+  }
+
+  const sent = await tmux(["send-keys", "-t", session, "--", "printf relaydesk-doctor-ready", "Enter"], 10000);
+  await sleep(250);
+  const capture = await tmux(["capture-pane", "-p", "-t", session], 10000);
+  await tmux(["kill-session", "-t", session], 5000).catch(() => undefined);
+
+  const output = capture.stdout || capture.stderr || sent.stdout || sent.stderr;
+  const ok = sent.ok && capture.ok && output.includes("relaydesk-doctor-ready");
+  return check(
+    id,
+    label,
+    ok,
+    ok ? `Created, sent to, captured, and killed ${session}.` : output || "No tmux output captured.",
+    fix || "Ensure tmux can create, send to, capture, and kill sessions."
   );
 }
 
@@ -405,19 +472,26 @@ async function doctor(config) {
   checks.push(check("gitignore-logs", "Runtime logs ignored", gitignore.includes("*.log"), "Runtime logs may contain local paths.", "Add *.log to .gitignore.", "warn"));
 
   checks.push(await commandCheck("git", "Git available", ["git", "--version"], root, "Install Git and make it available on PATH."));
+  checks.push(runnerSessionUniqueness(config));
 
   const needsWsl = usesWsl(config);
   if (needsWsl) {
     checks.push(await wslCheck("wsl", "WSL available", "printf 'WSL available: '; uname -sr", "Install WSL or switch runner tmux.mode to native."));
     checks.push(await wslCheck("wsl-tmux", "tmux available in WSL", "command -v tmux && tmux -V", "Install tmux inside WSL."));
+    checks.push(await tmuxSmokeCheck("wsl-tmux-smoke", "WSL tmux session smoke", "wsl", "Check WSL tmux server permissions and shell startup."));
     if (hasRunnerCommand(config, "claude")) {
       checks.push(await wslCheck("wsl-claude", "Claude Code available in WSL", "command -v claude && claude --version", "Install/login Claude Code inside WSL."));
     }
     if (hasRunnerCommand(config, "codex")) {
       checks.push(await wslCheck("wsl-codex", "Codex CLI available in WSL", "command -v codex && codex --version", "Install/login Codex CLI inside WSL."));
     }
-  } else {
+  }
+
+  if (!needsWsl || usesNativeTmux(config)) {
     checks.push(await commandCheck("tmux", "tmux available", ["tmux", "-V"], root, "Install tmux or use a WSL runner adapter."));
+    if (usesNativeTmux(config)) {
+      checks.push(await tmuxSmokeCheck("tmux-smoke", "Native tmux session smoke", "native", "Check native tmux permissions and shell startup."));
+    }
   }
 
   const projects = (config.projects || []).map((project) => ({
@@ -438,6 +512,11 @@ async function doctor(config) {
     checks.push(check(`project-${project.id}`, `${project.name} path`, project.exists, project.path || "No project path configured.", "Set this project path in relay.local.json."));
     for (const runner of project.runners) {
       checks.push(check(`runner-${project.id}-${runner.id}`, `${project.name} / ${runner.name}`, runner.configured, runner.session || runner.id, "Configure runner session and start command."));
+      const rawProject = (config.projects || []).find((item) => item.id === project.id) || project;
+      const rawRunner = (rawProject.runners || []).find((item) => item.id === runner.id) || runner;
+      if (rawRunner.kind === "tmux") {
+        checks.push(await runnerCwdCheck(rawProject, rawRunner));
+      }
     }
   }
 

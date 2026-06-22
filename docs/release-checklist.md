@@ -57,6 +57,12 @@ Open:
 - `http://127.0.0.1:8791/api/health`
 - `http://127.0.0.1:8791/api/doctor`
 
+Confirm Doctor reports:
+
+- tmux smoke check ran for the configured environment.
+- runner session names are unique.
+- every configured runner cwd exists.
+
 ## 5. Browser smoke
 
 Start UI:

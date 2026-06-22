@@ -16,6 +16,24 @@ RelayDesk depends on local tools that can change over time. Keep compatibility e
 
 ## Adapter notes
 
+## Doctor checks
+
+The Doctor panel is the fastest compatibility check for a new machine or after a
+Claude Code / Codex CLI / tmux update. It checks:
+
+- config source and parse status;
+- `.gitignore` protection for local config, evidence, and logs;
+- Git availability;
+- WSL and/or native tmux availability;
+- a real temporary tmux smoke session;
+- Claude Code and Codex CLI availability when configured;
+- project paths and per-runner `tmux.cwd`;
+- duplicate tmux session names.
+
+The tmux smoke check creates a temporary `relaydesk-doctor-*` session, sends a
+short command, captures the pane, then kills the temporary session. It should not
+touch your configured agent sessions.
+
 ### Claude Code
 
 Claude Code is treated as a tmux runner. RelayDesk can start, stop, capture, send text, and open an attached terminal.

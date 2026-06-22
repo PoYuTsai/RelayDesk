@@ -188,6 +188,16 @@ const slashCommandPresets = [
   { id: "compact", label: "/compact", command: "/compact", hint: "Summarize long context where supported" }
 ];
 
+const doctorPriorityIds = [
+  "runner-session-unique",
+  "wsl-tmux-smoke",
+  "tmux-smoke",
+  "wsl-claude",
+  "wsl-codex",
+  "gitignore-local-config",
+  "gitignore-evidence"
+];
+
 const setupCopy: Record<
   Lang,
   {
@@ -601,7 +611,10 @@ export function App() {
   const visibleDoctorChecks = useMemo(() => {
     if (!doctor) return [];
     const issues = doctor.checks.filter((item) => item.status !== "ok");
-    return (issues.length ? issues : doctor.checks).slice(0, 7);
+    if (issues.length) return issues.slice(0, 9);
+    const priority = doctorPriorityIds.map((id) => doctor.checks.find((item) => item.id === id)).filter(Boolean) as DoctorCheck[];
+    const rest = doctor.checks.filter((item) => !doctorPriorityIds.includes(item.id));
+    return [...priority, ...rest].slice(0, 9);
   }, [doctor]);
 
   const doctorById = useMemo(() => {
@@ -660,7 +673,7 @@ export function App() {
 
   const setupRows = useMemo(() => {
     const pathChecks = (doctor?.checks || []).filter((item) => item.id.startsWith("project-"));
-    const terminalChecks = ["wsl", "wsl-tmux", "tmux"].map((id) => doctorById.get(id)).filter(Boolean) as DoctorCheck[];
+    const terminalChecks = ["wsl", "wsl-tmux", "wsl-tmux-smoke", "tmux", "tmux-smoke"].map((id) => doctorById.get(id)).filter(Boolean) as DoctorCheck[];
     const agentChecks = ["wsl-claude", "wsl-codex"].map((id) => doctorById.get(id)).filter(Boolean) as DoctorCheck[];
     const statusFrom = (items: DoctorCheck[]) =>
       items.some((item) => item.status === "fail") ? "fail" : items.some((item) => item.status === "warn") ? "warn" : "ok";
