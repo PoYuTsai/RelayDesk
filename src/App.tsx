@@ -1,0 +1,1850 @@
+import { useEffect, useMemo, useState } from "react";
+import {
+  Activity,
+  AlertTriangle,
+  BookOpen,
+  Bot,
+  Camera,
+  Check,
+  CheckCircle2,
+  CircleDot,
+  Copy,
+  FileDiff,
+  FolderGit2,
+  GitBranch,
+  Globe2,
+  Image,
+  Inbox,
+  ListChecks,
+  Play,
+  Plus,
+  Power,
+  RefreshCcw,
+  Send,
+  Settings2,
+  ShieldCheck,
+  Square,
+  Terminal,
+  Trash2,
+  Upload,
+  Workflow
+} from "lucide-react";
+
+type Project = {
+  id: string;
+  name: string;
+  path: string;
+  runnerCount: number;
+};
+
+type ConfigRunner = {
+  id: string;
+  name: string;
+  kind: string;
+  session: string;
+  tmux?: {
+    mode?: "wsl" | "native";
+    cwd?: string;
+    startCommand?: string;
+    dismissCodexUpdatePrompt?: boolean;
+  };
+};
+
+type ConfigProject = {
+  id: string;
+  name: string;
+  path: string;
+  runners: ConfigRunner[];
+};
+
+type ConfigContext = {
+  source: {
+    path: string;
+    kind: string;
+  };
+  config: {
+    projects: ConfigProject[];
+  };
+};
+
+type GitContext = {
+  projectId: string;
+  branch: string;
+  clean: boolean;
+  status: string;
+  diffStat: string;
+  errors: string[];
+};
+
+type Runner = {
+  id: string;
+  name: string;
+  kind: string;
+  session: string;
+  state: "running" | "stopped" | "unconfigured";
+  lastOutput?: string;
+  code?: number;
+};
+
+type DoctorCheck = {
+  id: string;
+  label: string;
+  status: "ok" | "warn" | "fail";
+  detail: string;
+  fix?: string;
+};
+
+type DoctorContext = {
+  platform: string;
+  node: string;
+  summary: {
+    ok: number;
+    warn: number;
+    fail: number;
+    total: number;
+  };
+  checks: DoctorCheck[];
+};
+
+type UsageRunner = {
+  key: string;
+  projectId: string;
+  projectName: string;
+  runnerId: string;
+  runnerName: string;
+  starts: number;
+  stops: number;
+  restarts: number;
+  sends: number;
+  captures: number;
+  opens: number;
+  snapshots: number;
+  outputChars: number;
+  evidenceBytes: number;
+  failures: number;
+  lastAction: string;
+  lastAt: string;
+};
+
+type UsageContext = {
+  startedAt: string;
+  totals: {
+    starts: number;
+    stops: number;
+    restarts: number;
+    sends: number;
+    captures: number;
+    opens: number;
+    snapshots: number;
+    outputChars: number;
+    evidenceBytes: number;
+    failures: number;
+  };
+  runners: UsageRunner[];
+  recentActions: Array<{
+    at: string;
+    projectId: string;
+    projectName: string;
+    runnerId: string;
+    runnerName: string;
+    action: string;
+    ok: boolean;
+    outputChars: number;
+    evidenceBytes: number;
+    detail: string;
+  }>;
+};
+
+type Lang = "en" | "zh-TW";
+
+type Evidence = {
+  id: string;
+  name: string;
+  kind: "image" | "video" | "log";
+  size: string;
+  source?: string;
+  path?: string;
+  wslPath?: string;
+};
+
+type DecisionItem = {
+  id: string;
+  source: string;
+  title: string;
+  prompt: string;
+  options: string[];
+  selected: string;
+  note: string;
+  replyDraft: string;
+  status: "open" | "sent";
+};
+
+const steps = ["Discuss", "Synthesize", "Build", "Review", "Verify"];
+
+const slashCommandPresets = [
+  { id: "round", label: "/round", command: "/round", hint: "Summarize this round" },
+  { id: "clear", label: "/clear", command: "/clear", hint: "Clear current context" },
+  { id: "resume", label: "/resume", command: "/resume", hint: "Resume a previous thread" }
+];
+
+const setupCopy: Record<
+  Lang,
+  {
+    label: string;
+    title: string;
+    subtitle: string;
+    install: string;
+    config: string;
+    run: string;
+    copied: string;
+    checks: {
+      config: string;
+      paths: string;
+      terminal: string;
+      agents: string;
+    };
+    commands: {
+      install: string;
+      config: string;
+      run: string;
+    };
+    compat: string;
+    docs: string;
+  }
+> = {
+  en: {
+    label: "Setup",
+    title: "Quick start guide",
+    subtitle: "Use Doctor as the source of truth, then copy the commands you need.",
+    install: "Install deps",
+    config: "Copy config",
+    run: "Run app",
+    copied: "Copied",
+    checks: {
+      config: "Local config loaded",
+      paths: "Project paths exist",
+      terminal: "WSL/tmux ready",
+      agents: "Agent CLIs found"
+    },
+    commands: {
+      install: "npm.cmd install",
+      config: "Copy-Item relay.config.example.json relay.local.json",
+      run: "npm.cmd run api\nnpm.cmd run dev"
+    },
+    compat: "Compatibility",
+    docs: "README + setup docs"
+  },
+  "zh-TW": {
+    label: "設定",
+    title: "快速上手",
+    subtitle: "先看 Doctor 結果，再複製需要的指令。",
+    install: "安裝套件",
+    config: "複製設定",
+    run: "啟動服務",
+    copied: "已複製",
+    checks: {
+      config: "本機設定已載入",
+      paths: "專案路徑存在",
+      terminal: "WSL/tmux 可用",
+      agents: "Agent CLI 找得到"
+    },
+    commands: {
+      install: "npm.cmd install",
+      config: "Copy-Item relay.config.example.json relay.local.json",
+      run: "npm.cmd run api\nnpm.cmd run dev"
+    },
+    compat: "相容性",
+    docs: "README 與設定文件"
+  }
+};
+
+const seedEvidence: Evidence[] = [
+  { id: "ev-1", name: "opener-upload-failure.png", kind: "image", size: "1280x720" },
+  { id: "ev-2", name: "dogfood-repro.mp4", kind: "video", size: "6 frames" },
+  { id: "ev-3", name: "edge-function.log", kind: "log", size: "18 KB" }
+];
+
+const seedDecisions: DecisionItem[] = [
+  {
+    id: "decision-root-lane",
+    source: "Both agents",
+    title: "First root-cause lane",
+    prompt: "Which lane should the builder verify before editing?",
+    options: ["Image picker permission", "Compressed file path", "Opener request boundary"],
+    selected: "Image picker permission",
+    note: "Keep quota and OCR untouched until the failing upload path is confirmed.",
+    replyDraft: "",
+    status: "open"
+  },
+  {
+    id: "decision-evidence",
+    source: "Codex review",
+    title: "Evidence gate",
+    prompt: "What evidence must exist before patching?",
+    options: ["Device log + screenshot", "Simulator repro only", "Patch after code read"],
+    selected: "Device log + screenshot",
+    note: "Dogfood/TestFlight behavior is the target path.",
+    replyDraft: "",
+    status: "open"
+  }
+];
+
+async function getJson<T>(url: string): Promise<T> {
+  const response = await fetch(url);
+  if (!response.ok) throw new Error(await response.text());
+  return response.json();
+}
+
+function cx(...parts: Array<string | false | null | undefined>) {
+  return parts.filter(Boolean).join(" ");
+}
+
+function cleanCaptureLine(line: string) {
+  return line
+    .replace(/\u001b\[[0-9;?]*[ -/]*[@-~]/g, "")
+    .replace(/[╭╮╰╯│─▐▛▜▌▝▘]/g, " ")
+    .trim();
+}
+
+function extractOption(line: string) {
+  const cleaned = cleanCaptureLine(line)
+    .replace(/^\s*(?:[-*•]|\d+[.)]|[A-Z][.)]|\[[ xX]\])\s*/, "")
+    .replace(/\s+\((?:recommended|建議|推薦)\)$/i, "")
+    .trim();
+  return cleaned.length >= 2 && cleaned.length <= 90 ? cleaned : "";
+}
+
+function looksLikeQuestion(line: string) {
+  return (
+    /[?？]\s*$/.test(line) ||
+    /^(?:question|decision|blocked|choose|which|should|do you|請選擇|需要你|決策|問題)[:：\s]/i.test(line)
+  );
+}
+
+function makeDecisionTitle(prompt: string) {
+  const normalized = prompt.replace(/^(?:question|decision|問題|決策)[:：\s]+/i, "").trim();
+  return normalized.length > 58 ? `${normalized.slice(0, 55)}...` : normalized || "Captured decision";
+}
+
+function buildAgentReply(decision: DecisionItem, task: string) {
+  return [
+    "可以給對方 agent:",
+    `我會選「${decision.selected}」。`,
+    decision.note ? `理由：${decision.note}` : "",
+    `目前 task：${task}`,
+    "請先挑戰這個判斷：如果不同意，列出最大風險；如果同意，給出最小驗證步驟。需要改檔時，先列出會碰到的檔案與風險，再進入 patch。"
+  ]
+    .filter(Boolean)
+    .join("\n");
+}
+
+function snapshotReply(runner: Runner, task: string, hostPath: string, wslPath: string) {
+  return [
+    `Snapshot from ${runner.session}`,
+    `Windows file: ${hostPath}`,
+    `WSL file: ${wslPath}`,
+    `Task: ${task}`,
+    "Please do a second-pass check on this agent conversation snapshot.",
+    "Focus on whether the source agent is blocked, asking for a decision, showing a risky command, or missing evidence.",
+    "If you cannot inspect the image directly, ask me for OCR text or a cropped follow-up snapshot."
+  ].join("\n");
+}
+
+async function captureDisplayFrame() {
+  if (!navigator.mediaDevices?.getDisplayMedia) {
+    throw new Error("Screen capture is not available in this browser context.");
+  }
+  const stream = await navigator.mediaDevices.getDisplayMedia({ video: true, audio: false });
+  try {
+    const video = document.createElement("video");
+    video.srcObject = stream;
+    video.muted = true;
+    await new Promise<void>((resolve, reject) => {
+      video.onloadedmetadata = () => resolve();
+      video.onerror = () => reject(new Error("Could not load captured video stream."));
+    });
+    await video.play();
+    await new Promise((resolve) => window.setTimeout(resolve, 180));
+    const width = video.videoWidth || 1280;
+    const height = video.videoHeight || 720;
+    const canvas = document.createElement("canvas");
+    canvas.width = width;
+    canvas.height = height;
+    const context = canvas.getContext("2d");
+    if (!context) throw new Error("Could not create snapshot canvas.");
+    context.drawImage(video, 0, 0, width, height);
+    return { dataUrl: canvas.toDataURL("image/png"), width, height };
+  } finally {
+    stream.getTracks().forEach((track) => track.stop());
+  }
+}
+
+function RunnerDot({ state }: { state: Runner["state"] }) {
+  return <span className={cx("runner-dot", state)} />;
+}
+
+function AppShellSkeleton() {
+  return (
+    <div className="loading-shell">
+      <Activity className="spin" size={18} />
+      Loading RelayDesk
+    </div>
+  );
+}
+
+function compactNumber(value = 0) {
+  return new Intl.NumberFormat("en", { notation: value >= 10000 ? "compact" : "standard" }).format(value);
+}
+
+function formatBytes(bytes = 0) {
+  if (bytes >= 1024 * 1024) return `${(bytes / 1024 / 1024).toFixed(1)} MB`;
+  if (bytes >= 1024) return `${Math.round(bytes / 1024)} KB`;
+  return `${bytes} B`;
+}
+
+function formatTime(value: string) {
+  if (!value) return "never";
+  const time = new Date(value);
+  if (Number.isNaN(time.getTime())) return "unknown";
+  return time.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+}
+
+function shortRunnerName(name: string) {
+  return name.replace(/\s+tmux$/i, "").replace(/\s+CLI$/i, "");
+}
+
+function toWslPathClient(path: string) {
+  const normalized = path.trim().replace(/\\/g, "/");
+  const match = normalized.match(/^([A-Za-z]):\/(.*)$/);
+  if (!match) return normalized;
+  return `/mnt/${match[1].toLowerCase()}/${match[2]}`;
+}
+
+function runnerDefaults(project: Project | undefined, type: string) {
+  const projectId = project?.id || "project";
+  const projectPath = project?.path || "";
+  const cwd = toWslPathClient(projectPath);
+  if (type === "claude-code") {
+    return {
+      id: "claude-code",
+      name: "Claude Code tmux",
+      session: `rc-${projectId}`,
+      cwd,
+      startCommand: `bash -lc 'cd ${cwd || "."} && claude'`
+    };
+  }
+  if (type === "codex-cli") {
+    return {
+      id: "codex-cli",
+      name: "Codex CLI tmux",
+      session: `rc-codex-${projectId}`,
+      cwd,
+      startCommand: `bash -lc 'cd ${cwd || "."} && codex --no-alt-screen --dangerously-bypass-approvals-and-sandbox -C ${cwd || "."}'`
+    };
+  }
+  return {
+    id: "custom",
+    name: "Custom tmux",
+    session: `rc-${projectId}-custom`,
+    cwd,
+    startCommand: `bash -lc 'cd ${cwd || "."} && echo \"configure this runner\"'`
+  };
+}
+
+function clientId(value: string, fallback = "item") {
+  return (
+    (value || fallback)
+      .toLowerCase()
+      .replace(/[^a-z0-9._-]+/gi, "-")
+      .replace(/^-+|-+$/g, "")
+      .slice(0, 80) || fallback
+  );
+}
+
+export function App() {
+  const [projects, setProjects] = useState<Project[]>([]);
+  const [projectId, setProjectId] = useState("");
+  const [config, setConfig] = useState<ConfigContext | null>(null);
+  const [git, setGit] = useState<GitContext | null>(null);
+  const [doctor, setDoctor] = useState<DoctorContext | null>(null);
+  const [usage, setUsage] = useState<UsageContext | null>(null);
+  const [runners, setRunners] = useState<Runner[]>([]);
+  const [activeStep, setActiveStep] = useState("Discuss");
+  const [task, setTask] = useState("Opener dogfood upload screenshot fails after image picker returns.");
+  const [busyRunner, setBusyRunner] = useState<string | null>(null);
+  const [lastRunnerOutput, setLastRunnerOutput] = useState("");
+  const [evidence, setEvidence] = useState(seedEvidence);
+  const [decisions, setDecisions] = useState(seedDecisions);
+  const [decisionDraft, setDecisionDraft] = useState("");
+  const [copiedDecision, setCopiedDecision] = useState("");
+  const [copiedSetup, setCopiedSetup] = useState("");
+  const [commandRunnerId, setCommandRunnerId] = useState("");
+  const [writerRunnerId, setWriterRunnerId] = useState("");
+  const [slashCommand, setSlashCommand] = useState("/round");
+  const [consoleInput, setConsoleInput] = useState("");
+  const [consoleOutput, setConsoleOutput] = useState("");
+  const [consoleAutoRefresh, setConsoleAutoRefresh] = useState(false);
+  const [consoleLastCaptureAt, setConsoleLastCaptureAt] = useState("");
+  const [newProjectName, setNewProjectName] = useState("");
+  const [newProjectPath, setNewProjectPath] = useState("");
+  const [runnerType, setRunnerType] = useState("claude-code");
+  const [runnerSession, setRunnerSession] = useState("");
+  const [runnerCwd, setRunnerCwd] = useState("");
+  const [runnerStartCommand, setRunnerStartCommand] = useState("");
+  const [configBusy, setConfigBusy] = useState("");
+  const [lang, setLang] = useState<Lang>("zh-TW");
+  const [bootError, setBootError] = useState("");
+
+  const activeProject = useMemo(
+    () => projects.find((project) => project.id === projectId) || projects[0],
+    [projects, projectId]
+  );
+
+  const activeConfigProject = useMemo(
+    () => (config?.config.projects || []).find((project) => project.id === activeProject?.id),
+    [config, activeProject?.id]
+  );
+
+  const visibleDoctorChecks = useMemo(() => {
+    if (!doctor) return [];
+    const issues = doctor.checks.filter((item) => item.status !== "ok");
+    return (issues.length ? issues : doctor.checks).slice(0, 7);
+  }, [doctor]);
+
+  const doctorById = useMemo(() => {
+    return new Map((doctor?.checks || []).map((item) => [item.id, item]));
+  }, [doctor]);
+
+  const setup = setupCopy[lang];
+
+  const commandRunner = useMemo(() => {
+    return runners.find((runner) => runner.id === commandRunnerId) || runners.find((runner) => runner.state === "running") || runners[0];
+  }, [runners, commandRunnerId]);
+
+  const writerRunner = useMemo(() => {
+    return runners.find((runner) => runner.id === writerRunnerId) || runners.find((runner) => runner.id === "claude-code") || runners[0];
+  }, [runners, writerRunnerId]);
+
+  const usageByRunner = useMemo(() => {
+    return new Map(
+      (usage?.runners || [])
+        .filter((row) => row.projectId === activeProject?.id)
+        .map((row) => [row.runnerId, row])
+    );
+  }, [usage, activeProject?.id]);
+
+  const diskChangeCount = useMemo(() => {
+    return (git?.status || "")
+      .split(/\r?\n/)
+      .map((line) => line.trim())
+      .filter(Boolean).length;
+  }, [git?.status]);
+
+  const runnerPreset = useMemo(() => runnerDefaults(activeProject, runnerType), [activeProject, runnerType]);
+
+  const setupRows = useMemo(() => {
+    const pathChecks = (doctor?.checks || []).filter((item) => item.id.startsWith("project-"));
+    const terminalChecks = ["wsl", "wsl-tmux", "tmux"].map((id) => doctorById.get(id)).filter(Boolean) as DoctorCheck[];
+    const agentChecks = ["wsl-claude", "wsl-codex"].map((id) => doctorById.get(id)).filter(Boolean) as DoctorCheck[];
+    const statusFrom = (items: DoctorCheck[]) =>
+      items.some((item) => item.status === "fail") ? "fail" : items.some((item) => item.status === "warn") ? "warn" : "ok";
+
+    return [
+      {
+        id: "config",
+        label: setup.checks.config,
+        status: doctorById.get("config-source")?.status || "warn",
+        detail: doctorById.get("config-source")?.detail || "relay.local.json"
+      },
+      {
+        id: "paths",
+        label: setup.checks.paths,
+        status: pathChecks.length ? statusFrom(pathChecks) : "warn",
+        detail: pathChecks.length ? `${pathChecks.length} project path${pathChecks.length === 1 ? "" : "s"}` : "No projects"
+      },
+      {
+        id: "terminal",
+        label: setup.checks.terminal,
+        status: terminalChecks.length ? statusFrom(terminalChecks) : "warn",
+        detail: terminalChecks.map((item) => item.label.replace(" available", "")).join(" / ") || "tmux"
+      },
+      {
+        id: "agents",
+        label: setup.checks.agents,
+        status: agentChecks.length ? statusFrom(agentChecks) : "warn",
+        detail: agentChecks.map((item) => item.label.replace(" available in WSL", "")).join(" / ") || "Claude / Codex"
+      }
+    ] satisfies Array<{ id: string; label: string; status: DoctorCheck["status"]; detail: string }>;
+  }, [doctor?.checks, doctorById, setup]);
+
+  async function refresh(project = activeProject) {
+    if (!project) return;
+    const [nextGit, nextRunners, nextDoctor, nextUsage, nextConfig] = await Promise.all([
+      getJson<GitContext>(`/api/git?projectId=${encodeURIComponent(project.id)}`),
+      getJson<{ runners: Runner[] }>(`/api/runners?projectId=${encodeURIComponent(project.id)}`),
+      getJson<DoctorContext>("/api/doctor"),
+      getJson<UsageContext>("/api/usage"),
+      getJson<ConfigContext>("/api/config")
+    ]);
+    setGit(nextGit);
+    setRunners(nextRunners.runners);
+    setDoctor(nextDoctor);
+    setUsage(nextUsage);
+    setConfig(nextConfig);
+  }
+
+  useEffect(() => {
+    Promise.all([getJson<{ projects: Project[] }>("/api/projects"), getJson<ConfigContext>("/api/config")])
+      .then(([projectData, configData]) => {
+        setProjects(projectData.projects);
+        setConfig(configData);
+        setProjectId(projectData.projects[0]?.id || "");
+      })
+      .catch((error) => setBootError(String(error)));
+  }, []);
+
+  useEffect(() => {
+    if (activeProject) void refresh(activeProject);
+  }, [activeProject?.id]);
+
+  useEffect(() => {
+    if (!runners.length) return;
+    if (commandRunnerId && runners.some((runner) => runner.id === commandRunnerId)) return;
+    const preferred = runners.find((runner) => runner.state === "running") || runners[0];
+    setCommandRunnerId(preferred.id);
+  }, [runners, commandRunnerId]);
+
+  useEffect(() => {
+    if (!runners.length) return;
+    if (writerRunnerId && runners.some((runner) => runner.id === writerRunnerId)) return;
+    const preferred = runners.find((runner) => runner.id === "claude-code") || runners[0];
+    setWriterRunnerId(preferred.id);
+  }, [runners, writerRunnerId]);
+
+  useEffect(() => {
+    if (!consoleAutoRefresh || !commandRunner || commandRunner.state !== "running") return;
+    const interval = window.setInterval(() => {
+      void captureConsole(commandRunner, { mode: "peek", silent: true });
+    }, 4000);
+    return () => window.clearInterval(interval);
+  }, [activeProject?.id, commandRunner?.id, commandRunner?.state, consoleAutoRefresh]);
+
+  async function runRunner(
+    runner: Runner,
+    action: "start" | "stop" | "restart" | "status" | "capture" | "send" | "open",
+    options: { text?: string; confirmMessage?: string; onSuccess?: () => void } = {}
+  ) {
+    if (!activeProject) return;
+    if (["stop", "restart"].includes(action)) {
+      const ok = window.confirm(`${action.toUpperCase()} ${runner.name} (${runner.session})?`);
+      if (!ok) return;
+    }
+    if (action === "send") {
+      const ok = window.confirm(options.confirmMessage || `Send the current task to ${runner.session}?`);
+      if (!ok) return;
+    }
+    setBusyRunner(`${runner.id}:${action}`);
+    setLastRunnerOutput("");
+    try {
+      const response = await fetch("/api/runner", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ projectId: activeProject.id, runnerId: runner.id, action, text: options.text ?? task })
+      });
+      const result = (await response.json()) as {
+        ok: boolean;
+        stdout: string;
+        stderr: string;
+        code: number;
+        action: string;
+      };
+      const output =
+        [result.stdout, result.stderr].filter(Boolean).join("\n") ||
+        `${action}: ${result.ok === false ? "failed" : "ok"}${typeof result.code === "number" ? ` (exit ${result.code})` : ""}`;
+      const capturedDecisionCount = action === "capture" && result.ok !== false ? captureDecisions(output, runner) : 0;
+      setLastRunnerOutput(
+        capturedDecisionCount > 0
+          ? `${output}\n\nDecision Inbox: captured ${capturedDecisionCount} open call${capturedDecisionCount === 1 ? "" : "s"}.`
+          : output
+      );
+      if (result.ok !== false) options.onSuccess?.();
+      await refresh(activeProject);
+    } catch (error) {
+      setLastRunnerOutput(String(error));
+    } finally {
+      setBusyRunner(null);
+    }
+  }
+
+  async function postRunnerAction(
+    runner: Runner,
+    action: "peek" | "capture" | "send",
+    body: Record<string, unknown> = {}
+  ) {
+    if (!activeProject) throw new Error("No active project.");
+    const response = await fetch("/api/runner", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ projectId: activeProject.id, runnerId: runner.id, action, ...body })
+    });
+    const result = (await response.json()) as {
+      ok?: boolean;
+      stdout?: string;
+      stderr?: string;
+      code?: number;
+      action?: string;
+      error?: string;
+    };
+    const output = [result.stdout, result.stderr].filter(Boolean).join("\n");
+    if (!response.ok || result.ok === false) {
+      throw new Error(result.error || output || `${action} failed.`);
+    }
+    return { ...result, output };
+  }
+
+  async function captureConsole(
+    runner = commandRunner,
+    options: { mode?: "peek" | "capture"; silent?: boolean } = {}
+  ) {
+    const mode = options.mode || "capture";
+    if (!runner) {
+      const message = "No runner is configured for this project.";
+      setConsoleOutput(message);
+      if (!options.silent) setLastRunnerOutput(message);
+      return;
+    }
+    if (runner.state !== "running") {
+      const message = `Start ${runner.session} before reading the live pane.`;
+      setConsoleOutput(message);
+      if (!options.silent) setLastRunnerOutput(message);
+      return;
+    }
+
+    if (!options.silent) {
+      setBusyRunner(`${runner.id}:console-${mode}`);
+    }
+    try {
+      const result = await postRunnerAction(runner, mode);
+      const output = result.output || "Captured an empty tmux pane.";
+      setConsoleOutput(output);
+      setConsoleLastCaptureAt(new Date().toLocaleTimeString());
+      if (mode === "capture") {
+        const capturedDecisionCount = captureDecisions(output, runner);
+        setLastRunnerOutput(
+          capturedDecisionCount > 0
+            ? `${output}\n\nDecision Inbox: captured ${capturedDecisionCount} open call${capturedDecisionCount === 1 ? "" : "s"}.`
+            : output
+        );
+        await refresh(activeProject);
+      }
+    } catch (error) {
+      const message = `Console ${mode} failed: ${String(error)}`;
+      setConsoleOutput(message);
+      if (!options.silent) setLastRunnerOutput(message);
+    } finally {
+      if (!options.silent) setBusyRunner(null);
+    }
+  }
+
+  async function sendConsoleInput(value = consoleInput) {
+    const text = value.trim();
+    if (!text) return;
+    if (!commandRunner) {
+      const message = "No runner is configured for this project.";
+      setConsoleOutput(message);
+      setLastRunnerOutput(message);
+      return;
+    }
+    if (commandRunner.state !== "running") {
+      const message = `Start ${commandRunner.session} before sending console input.`;
+      setConsoleOutput(message);
+      setLastRunnerOutput(message);
+      return;
+    }
+
+    setBusyRunner(`${commandRunner.id}:console-send`);
+    try {
+      await postRunnerAction(commandRunner, "send", { text });
+      setConsoleInput("");
+      setSlashCommand(text.startsWith("/") ? text : slashCommand);
+      setConsoleOutput((current) => `${current ? `${current}\n\n` : ""}[RelayDesk sent to ${commandRunner.session}]\n${text}`);
+      await new Promise<void>((resolve) => window.setTimeout(resolve, 650));
+      await captureConsole(commandRunner, { mode: "peek", silent: true });
+      await refresh(activeProject);
+    } catch (error) {
+      const message = `Console send failed: ${String(error)}`;
+      setConsoleOutput(message);
+      setLastRunnerOutput(message);
+    } finally {
+      setBusyRunner(null);
+    }
+  }
+
+  async function snapshotRunner(runner: Runner) {
+    if (!activeProject) return;
+    setBusyRunner(`${runner.id}:snapshot`);
+    setLastRunnerOutput("");
+    try {
+      const frame = await captureDisplayFrame();
+      const response = await fetch("/api/evidence", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          projectId: activeProject.id,
+          runnerId: runner.id,
+          source: runner.session,
+          dataUrl: frame.dataUrl
+        })
+      });
+      const result = (await response.json()) as {
+        ok: boolean;
+        stderr?: string;
+        evidence?: {
+          name: string;
+          hostPath: string;
+          wslPath: string;
+          bytes: number;
+          mime: string;
+        };
+      };
+      if (!response.ok || result.ok === false || !result.evidence) {
+        throw new Error(result.stderr || "Snapshot save failed.");
+      }
+
+      const saved = result.evidence;
+      const evidenceItem: Evidence = {
+        id: `${saved.name}-${Date.now()}`,
+        name: saved.name,
+        kind: "image",
+        size: `${frame.width}x${frame.height}`,
+        source: runner.session,
+        path: saved.hostPath,
+        wslPath: saved.wslPath
+      };
+      const replyDraft = snapshotReply(runner, task, saved.hostPath, saved.wslPath);
+      setEvidence((current) => [evidenceItem, ...current].slice(0, 8));
+      const snapshotDecision: DecisionItem = {
+        id: `snapshot-${runner.session}-${Date.now()}`,
+        source: `${runner.session} snapshot`,
+        title: "Conversation snapshot review",
+        prompt: `Review the captured ${runner.session} conversation screen before the next agent step.`,
+        options: ["Send to other agent", "Need OCR text", "Retake snapshot"],
+        selected: "Send to other agent",
+        note: `Snapshot saved at ${saved.wslPath}`,
+        replyDraft,
+        status: "open"
+      };
+      setDecisions((current) => [
+        snapshotDecision,
+        ...current
+      ].slice(0, 12));
+      setLastRunnerOutput(`Snapshot saved.\nWindows: ${saved.hostPath}\nWSL: ${saved.wslPath}`);
+      await refresh(activeProject);
+    } catch (error) {
+      setLastRunnerOutput(`Snapshot failed: ${String(error)}`);
+    } finally {
+      setBusyRunner(null);
+    }
+  }
+
+  function addEvidence(files: FileList | null) {
+    if (!files?.length) return;
+    const next = Array.from(files).map((file) => {
+      const ext = file.name.split(".").pop()?.toLowerCase();
+      const kind = file.type.startsWith("image/")
+        ? "image"
+        : file.type.startsWith("video/") || ["mp4", "mov", "webm"].includes(ext || "")
+          ? "video"
+          : "log";
+      return {
+        id: `${file.name}-${file.lastModified}`,
+        name: file.name,
+        kind,
+        size: `${Math.max(1, Math.round(file.size / 1024))} KB`
+      } satisfies Evidence;
+    });
+    setEvidence((current) => [...next, ...current].slice(0, 8));
+  }
+
+  function captureDecisions(output: string, runner: Runner) {
+    const lines = output
+      .split(/\r?\n/)
+      .map(cleanCaptureLine)
+      .filter((line) => line.length > 1);
+    const found: DecisionItem[] = [];
+
+    for (let index = 0; index < lines.length && found.length < 4; index += 1) {
+      const line = lines[index];
+      if (!looksLikeQuestion(line)) continue;
+      const options = lines
+        .slice(index + 1, index + 7)
+        .map(extractOption)
+        .filter((option, optionIndex, all) => option && all.indexOf(option) === optionIndex)
+        .slice(0, 4);
+      found.push({
+        id: `capture-${runner.session}-${Date.now()}-${found.length}`,
+        source: runner.session,
+        title: makeDecisionTitle(line),
+        prompt: line,
+        options: options.length >= 2 ? options : ["Proceed", "Hold", "Ask both agents"],
+        selected: options[0] || "Proceed",
+        note: "",
+        replyDraft: "",
+        status: "open"
+      });
+    }
+
+    const existing = new Set(decisions.map((item) => `${item.source}:${item.prompt}`.toLowerCase()));
+    const incoming = found.filter((item) => {
+      const key = `${item.source}:${item.prompt}`.toLowerCase();
+      if (existing.has(key)) return false;
+      existing.add(key);
+      return true;
+    });
+    if (!incoming.length) return 0;
+
+    setDecisions((current) => {
+      const seen = new Set(current.map((item) => `${item.source}:${item.prompt}`.toLowerCase()));
+      const next = incoming.filter((item) => {
+        const key = `${item.source}:${item.prompt}`.toLowerCase();
+        if (seen.has(key)) return false;
+        seen.add(key);
+        return true;
+      });
+      return next.length ? [...next, ...current].slice(0, 12) : current;
+    });
+    return incoming.length;
+  }
+
+  function updateDecision(id: string, patch: Partial<DecisionItem>) {
+    setDecisions((current) => current.map((item) => (item.id === id ? { ...item, ...patch } : item)));
+  }
+
+  function addDecision() {
+    const value = decisionDraft.trim();
+    if (!value) return;
+    const title = value.length > 52 ? `${value.slice(0, 49)}...` : value;
+    setDecisions((current) => [
+      {
+        id: `decision-${Date.now()}`,
+        source: "You",
+        title,
+        prompt: value,
+        options: ["Proceed", "Hold", "Ask both agents"],
+        selected: "Proceed",
+        note: "",
+        replyDraft: "",
+        status: "open"
+      },
+      ...current
+    ]);
+    setDecisionDraft("");
+  }
+
+  function decisionText(decision: DecisionItem) {
+    const draft = decision.replyDraft.trim();
+    if (draft) return draft;
+    return [
+      `Decision: ${decision.title}`,
+      `Answer: ${decision.selected}`,
+      decision.note ? `Context: ${decision.note}` : "",
+      `Task: ${task}`,
+      "Continue from this decision. If blocked, ask one concise follow-up question with explicit options."
+    ]
+      .filter(Boolean)
+      .join("\n");
+  }
+
+  async function copyDecisionReply(decision: DecisionItem) {
+    const text = decisionText(decision);
+    try {
+      await navigator.clipboard.writeText(text);
+      setCopiedDecision(decision.id);
+      window.setTimeout(() => setCopiedDecision((current) => (current === decision.id ? "" : current)), 1400);
+    } catch (error) {
+      setLastRunnerOutput(`Copy failed: ${String(error)}`);
+    }
+  }
+
+  async function copySetupCommand(id: string, text: string) {
+    try {
+      await navigator.clipboard.writeText(text);
+      setCopiedSetup(id);
+      window.setTimeout(() => setCopiedSetup((current) => (current === id ? "" : current)), 1400);
+    } catch (error) {
+      setLastRunnerOutput(`Copy failed: ${String(error)}`);
+    }
+  }
+
+  async function postConfigAction(body: Record<string, unknown>, preferredProjectId = activeProject?.id || "") {
+    setConfigBusy(String(body.action || "config"));
+    setLastRunnerOutput("");
+    try {
+      const response = await fetch("/api/config", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify(body)
+      });
+      const result = (await response.json()) as ConfigContext & { ok?: boolean; error?: string };
+      if (!response.ok || result.ok === false) throw new Error(result.error || "Config update failed.");
+      const [projectData, configData] = await Promise.all([
+        getJson<{ projects: Project[] }>("/api/projects"),
+        getJson<ConfigContext>("/api/config")
+      ]);
+      setProjects(projectData.projects);
+      setConfig(configData);
+      const nextProject =
+        projectData.projects.find((project) => project.id === preferredProjectId) ||
+        projectData.projects.find((project) => project.id === activeProject?.id) ||
+        projectData.projects[0];
+      setProjectId(nextProject?.id || "");
+      if (nextProject) {
+        await refresh(nextProject);
+      } else {
+        setGit(null);
+        setRunners([]);
+      }
+      setLastRunnerOutput(`Config updated: ${body.action}`);
+    } catch (error) {
+      setLastRunnerOutput(`Config update failed: ${String(error)}`);
+    } finally {
+      setConfigBusy("");
+    }
+  }
+
+  async function addProjectConfig() {
+    const name = newProjectName.trim();
+    const path = newProjectPath.trim();
+    if (!name || !path) {
+      setLastRunnerOutput("Project name and path are required.");
+      return;
+    }
+    const id = clientId(name, "project");
+    await postConfigAction({ action: "add-project", id, name, path }, id);
+    setNewProjectName("");
+    setNewProjectPath("");
+  }
+
+  async function deleteProjectConfig() {
+    if (!activeProject) return;
+    const ok = window.confirm(`Remove ${activeProject.name} from RelayDesk config? This will not delete the project folder.`);
+    if (!ok) return;
+    const fallback = projects.find((project) => project.id !== activeProject.id)?.id || "";
+    await postConfigAction({ action: "delete-project", projectId: activeProject.id }, fallback);
+  }
+
+  async function addRunnerConfig() {
+    if (!activeProject) return;
+    const session = (runnerSession || runnerPreset.session).trim();
+    const cwd = (runnerCwd || runnerPreset.cwd).trim();
+    const startCommand = (runnerStartCommand || runnerPreset.startCommand).trim();
+    await postConfigAction(
+      {
+        action: "add-runner",
+        projectId: activeProject.id,
+        runnerType,
+        runnerId: runnerPreset.id,
+        name: runnerPreset.name,
+        session,
+        cwd,
+        startCommand,
+        mode: "wsl",
+        dismissCodexUpdatePrompt: runnerType === "codex-cli"
+      },
+      activeProject.id
+    );
+    setRunnerSession("");
+    setRunnerCwd("");
+    setRunnerStartCommand("");
+  }
+
+  async function deleteRunnerConfig(runner: ConfigRunner) {
+    if (!activeProject) return;
+    const ok = window.confirm(`Remove ${runner.session} from RelayDesk config? This will not kill a running tmux session.`);
+    if (!ok) return;
+    await postConfigAction({ action: "delete-runner", projectId: activeProject.id, runnerId: runner.id }, activeProject.id);
+  }
+
+  async function sendCliCommand(value = slashCommand) {
+    const command = value.trim();
+    if (!command) return;
+    if (!commandRunner) {
+      setLastRunnerOutput("No runner is configured for this project.");
+      return;
+    }
+    if (commandRunner.state !== "running") {
+      setLastRunnerOutput(`Start ${commandRunner.session} before sending CLI commands.`);
+      return;
+    }
+    setSlashCommand(command);
+    await runRunner(commandRunner, "send", {
+      text: command,
+      confirmMessage: `Send "${command}" to ${commandRunner.session}? Make sure the agent is waiting at its prompt.`
+    });
+  }
+
+  if (bootError) return <div className="loading-shell error">{bootError}</div>;
+  if (!projects.length) return <AppShellSkeleton />;
+
+  return (
+    <main className="app-shell">
+      <aside className="sidebar">
+        <div className="brand">
+          <div className="brand-mark">
+            <Workflow size={18} />
+          </div>
+          <div>
+            <strong>RelayDesk</strong>
+            <span>Local agent cockpit</span>
+          </div>
+        </div>
+
+        <section className="side-section">
+          <div className="section-label">Projects</div>
+          <div className="project-list">
+            {projects.map((project) => (
+              <button
+                key={project.id}
+                className={cx("project-row", project.id === activeProject?.id && "active")}
+                onClick={() => setProjectId(project.id)}
+              >
+                <FolderGit2 size={16} />
+                <span>
+                  <strong>{project.name}</strong>
+                  <small>{project.runnerCount} runner{project.runnerCount === 1 ? "" : "s"}</small>
+                </span>
+              </button>
+            ))}
+          </div>
+        </section>
+
+        <section className="side-section">
+          <div className="section-label">Runner Health</div>
+          {runners.length ? (
+            runners.map((runner) => (
+              <div className="runner-mini" key={runner.id}>
+                <RunnerDot state={runner.state} />
+                <span>{runner.session}</span>
+                <small>{runner.state}</small>
+              </div>
+            ))
+          ) : (
+            <div className="empty-note">No runners configured.</div>
+          )}
+        </section>
+
+        <section className="side-section risk-box">
+          <ShieldCheck size={16} />
+          <div>
+            <strong>Single writer policy</strong>
+            <p>Only one agent should hold write permission during Build.</p>
+          </div>
+        </section>
+      </aside>
+
+      <section className="workspace">
+        <header className="topbar">
+          <div>
+            <div className="eyeline">Workspace</div>
+            <h1>{activeProject?.name}</h1>
+          </div>
+          <div className="status-cluster">
+            <span className={cx("status-pill", git?.clean ? "safe" : "warn")}>
+              {git?.clean ? "git clean" : "dirty worktree"}
+            </span>
+            <span className="status-pill">
+              <GitBranch size={13} />
+              {git?.branch || "unknown"}
+            </span>
+          </div>
+        </header>
+
+        <section className="trust-bar">
+          <div className="trust-intro">
+            <div className="section-label">Agent Trust Bar</div>
+            <h2>Verify agent claims against disk</h2>
+            <p>Choose the active writer, then compare every agent claim with git and local runner activity.</p>
+          </div>
+
+          <div className="writer-lock">
+            <div className="trust-mini-label">Active writer</div>
+            <div className="writer-toggle" role="group" aria-label="Active writer">
+              {runners.map((runner) => (
+                <button
+                  key={`writer-${runner.id}`}
+                  className={cx(writerRunner?.id === runner.id && "active")}
+                  onClick={() => setWriterRunnerId(runner.id)}
+                >
+                  <RunnerDot state={runner.state} />
+                  {shortRunnerName(runner.name)}
+                </button>
+              ))}
+              {!runners.length && <span>No runners</span>}
+            </div>
+          </div>
+
+          <div className={cx("disk-verify", git?.clean ? "safe" : "warn")}>
+            <div>
+              <span>Disk verify</span>
+              <strong>
+                {!git
+                  ? "Loading disk state"
+                  : git.clean
+                    ? "No disk changes"
+                    : `${diskChangeCount || "Dirty"} file${diskChangeCount === 1 ? "" : "s"} changed`}
+              </strong>
+            </div>
+            <small>
+              {!git
+                ? "Waiting for git context."
+                : git.clean
+                  ? "Claims still need review before merge."
+                  : "Review git status before trusting agent output."}
+            </small>
+          </div>
+
+          <div className="trust-agent-grid">
+            {runners.slice(0, 2).map((runner) => {
+              const row = usageByRunner.get(runner.id);
+              return (
+                <article className={cx("trust-agent", writerRunner?.id === runner.id && "writer")} key={`trust-${runner.id}`}>
+                  <div className="trust-agent-head">
+                    <div>
+                      <strong>{shortRunnerName(runner.name)}</strong>
+                      <span>{runner.session}</span>
+                    </div>
+                    <div className="trust-agent-state">
+                      {writerRunner?.id === runner.id && <em>writer</em>}
+                      <RunnerDot state={runner.state} />
+                    </div>
+                  </div>
+                  <div className="trust-metrics">
+                    <span>
+                      <strong>{compactNumber(row?.sends ?? 0)}</strong>
+                      <small>sends</small>
+                    </span>
+                    <span>
+                      <strong>{compactNumber(row?.captures ?? 0)}</strong>
+                      <small>captures</small>
+                    </span>
+                    <span>
+                      <strong>{compactNumber(row?.snapshots ?? 0)}</strong>
+                      <small>snapshots</small>
+                    </span>
+                  </div>
+                  <p>{row ? `${row.lastAction || "idle"} at ${formatTime(row.lastAt)}` : "No local activity yet"}</p>
+                </article>
+              );
+            })}
+          </div>
+        </section>
+
+        <nav className="stepper">
+          {steps.map((step, index) => (
+            <button
+              key={step}
+              className={cx("step", step === activeStep && "active", steps.indexOf(activeStep) > index && "done")}
+              onClick={() => setActiveStep(step)}
+            >
+              <span>{index + 1}</span>
+              {step}
+            </button>
+          ))}
+        </nav>
+
+        <div className="main-grid">
+          <section className="task-panel">
+            <div className="panel-head">
+              <div>
+                <div className="section-label">Current Task</div>
+                <h2>Opener screenshot upload failure</h2>
+              </div>
+              <button className="ghost-button" onClick={() => void refresh()}>
+                <RefreshCcw size={14} />
+                Refresh
+              </button>
+            </div>
+            <textarea value={task} onChange={(event) => setTask(event.target.value)} />
+            <div className="agent-lanes">
+              <article>
+                <div className="lane-title">
+                  <Bot size={15} />
+                  Claude Code
+                </div>
+                <p>Lead builder for product flow, Flutter UI, and first-line dogfood bugs.</p>
+                <span className="lane-mode">Plan mode</span>
+              </article>
+              <article>
+                <div className="lane-title">
+                  <Bot size={15} />
+                  Codex
+                </div>
+                <p>Read-only reviewer for git diff, risk zones, and root-cause checks.</p>
+                <span className="lane-mode">Review mode</span>
+              </article>
+            </div>
+          </section>
+
+          <section className="consensus-panel">
+            <div className="panel-head">
+              <div>
+                <div className="section-label">Consensus</div>
+                <h2>Decision Ledger</h2>
+              </div>
+              <span className="verdict">SAFE_TO_PATCH</span>
+            </div>
+            <div className="ledger">
+              <div>
+                <strong>Agreement</strong>
+                <p>Start with image picker permission, compressed file path, and opener request boundary.</p>
+              </div>
+              <div>
+                <strong>Missing Evidence</strong>
+                <p>Need device log and failing screenshot/video before changing quota or OCR code.</p>
+              </div>
+              <div>
+                <strong>Next Move</strong>
+                <p>Run Discuss, then assign one builder. Reviewer reads git diff after targeted fix.</p>
+              </div>
+            </div>
+          </section>
+        </div>
+
+        <section className="session-console">
+          <div className="console-head">
+            <div>
+              <div className="section-label">Session Console</div>
+              <h2>Live tmux pane</h2>
+            </div>
+            <div className="console-tools">
+              <select
+                className="console-runner-select"
+                value={commandRunner?.id || ""}
+                disabled={!runners.length}
+                onChange={(event) => setCommandRunnerId(event.target.value)}
+              >
+                {runners.map((runner) => (
+                  <option value={runner.id} key={runner.id}>
+                    {runner.session}
+                  </option>
+                ))}
+              </select>
+              <button disabled={!!busyRunner || commandRunner?.state !== "running"} onClick={() => void captureConsole(commandRunner, { mode: "capture" })}>
+                <FileDiff size={13} />
+                Capture Pane
+              </button>
+              <button
+                className={cx(consoleAutoRefresh && "active")}
+                disabled={!commandRunner || commandRunner.state !== "running"}
+                onClick={() => setConsoleAutoRefresh((current) => !current)}
+              >
+                <RefreshCcw size={13} />
+                Auto refresh {consoleAutoRefresh ? "on" : "off"}
+              </button>
+              <button disabled={!!busyRunner || commandRunner?.state !== "running"} onClick={() => commandRunner && void runRunner(commandRunner, "open")}>
+                <Terminal size={13} />
+                Open
+              </button>
+            </div>
+          </div>
+          <div className="console-meta">
+            <span>
+              <RunnerDot state={commandRunner?.state || "unconfigured"} />
+              {commandRunner ? `${commandRunner.name} / ${commandRunner.session}` : "No runner"}
+            </span>
+            <span>{consoleLastCaptureAt ? `Last pane read ${consoleLastCaptureAt}` : "No pane read yet"}</span>
+          </div>
+          <pre className="console-output">{consoleOutput || "Live tmux output appears here."}</pre>
+          <div className="console-command-bar">
+            <input
+              value={consoleInput}
+              onChange={(event) => setConsoleInput(event.target.value)}
+              onKeyDown={(event) => {
+                if (event.key === "Enter") void sendConsoleInput();
+              }}
+              placeholder="Type a task, decision reply, /round, /clear, /resume..."
+            />
+            <button disabled={!!busyRunner || commandRunner?.state !== "running" || !consoleInput.trim()} onClick={() => void sendConsoleInput()}>
+              <Send size={13} />
+              Send
+            </button>
+          </div>
+          <div className="console-presets">
+            {slashCommandPresets.map((preset) => (
+              <button
+                key={`console-${preset.id}`}
+                disabled={!!busyRunner || commandRunner?.state !== "running"}
+                title={preset.hint}
+                onClick={() => void sendConsoleInput(preset.command)}
+              >
+                {preset.label}
+              </button>
+            ))}
+          </div>
+        </section>
+
+        <section className="decision-inbox">
+          <div className="tray-head">
+            <div>
+              <div className="section-label">Decision Inbox</div>
+              <h2>Open calls</h2>
+            </div>
+            <div className="decision-compose">
+              <input
+                value={decisionDraft}
+                onChange={(event) => setDecisionDraft(event.target.value)}
+                placeholder="Add a question or decision..."
+                onKeyDown={(event) => {
+                  if (event.key === "Enter") addDecision();
+                }}
+              />
+              <button disabled={!decisionDraft.trim()} onClick={addDecision}>
+                <Plus size={14} />
+                Add
+              </button>
+            </div>
+          </div>
+          <div className="decision-list">
+            {decisions.map((decision) => (
+              <article className={cx("decision-card", decision.status === "sent" && "sent")} key={decision.id}>
+                <div className="decision-card-head">
+                  <div>
+                    <span className="decision-source">
+                      <Inbox size={13} />
+                      {decision.source}
+                    </span>
+                    <strong>{decision.title}</strong>
+                  </div>
+                  <span className={cx("decision-state", decision.status)}>
+                    {decision.status === "sent" ? <Check size={13} /> : <CircleDot size={13} />}
+                    {decision.status}
+                  </span>
+                </div>
+                <p className="decision-prompt">{decision.prompt}</p>
+                <div className="decision-options">
+                  {decision.options.map((option) => (
+                    <button
+                      key={option}
+                      className={cx("decision-option", decision.selected === option && "active")}
+                      onClick={() => updateDecision(decision.id, { selected: option, replyDraft: "", status: "open" })}
+                    >
+                      {option}
+                    </button>
+                  ))}
+                </div>
+                <textarea
+                  className="decision-note"
+                  value={decision.note}
+                  onChange={(event) => updateDecision(decision.id, { note: event.target.value, status: "open" })}
+                  placeholder="Decision context..."
+                />
+                <div className="reply-draft-box">
+                  <div className="reply-draft-head">
+                    <span>Cross-agent reply</span>
+                    <div>
+                      <button onClick={() => updateDecision(decision.id, { replyDraft: buildAgentReply(decision, task), status: "open" })}>
+                        Build reply
+                      </button>
+                      <button onClick={() => void copyDecisionReply(decision)}>
+                        <Copy size={13} />
+                        {copiedDecision === decision.id ? "Copied" : "Copy"}
+                      </button>
+                    </div>
+                  </div>
+                  <textarea
+                    className="reply-draft"
+                    value={decision.replyDraft}
+                    onChange={(event) => updateDecision(decision.id, { replyDraft: event.target.value, status: "open" })}
+                    placeholder="Paste or build the exact reply you want to send to the other agent..."
+                  />
+                </div>
+                <div className="decision-footer">
+                  <small>{decision.replyDraft.trim() ? "custom reply draft" : decision.selected}</small>
+                  <div className="decision-actions">
+                    {runners.map((runner) => (
+                      <button
+                        key={`${decision.id}-${runner.id}`}
+                        disabled={!!busyRunner || runner.state !== "running"}
+                        onClick={() =>
+                          void runRunner(runner, "send", {
+                            text: decisionText(decision),
+                            confirmMessage: `Send this decision to ${runner.session}?`,
+                            onSuccess: () => updateDecision(decision.id, { status: "sent" })
+                          })
+                        }
+                      >
+                        <Send size={13} />
+                        Send to {runner.session}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              </article>
+            ))}
+          </div>
+        </section>
+
+        <section className="evidence-tray">
+          <div className="tray-head">
+            <div>
+              <div className="section-label">Evidence</div>
+              <h2>Bug material attached to this task</h2>
+            </div>
+            <label className="upload-button">
+              <Upload size={14} />
+              Add files
+              <input type="file" multiple onChange={(event) => addEvidence(event.target.files)} />
+            </label>
+          </div>
+          <div className="evidence-list">
+            {evidence.map((item) => (
+              <div className="evidence-card" key={item.id}>
+                <div className={cx("evidence-icon", item.kind)}>
+                  {item.kind === "image" ? <Image size={18} /> : item.kind === "video" ? <Play size={18} /> : <FileDiff size={18} />}
+                </div>
+                <div>
+                  <strong>{item.name}</strong>
+                  <span>{item.source ? `${item.source} - ` : ""}{item.kind} - {item.size}</span>
+                </div>
+              </div>
+            ))}
+          </div>
+        </section>
+      </section>
+
+      <aside className="ops-panel">
+        <section className="ops-card">
+          <div className="panel-head">
+            <div>
+              <div className="section-label">Git Review</div>
+              <h2>Diff state</h2>
+            </div>
+            {git?.clean ? <CheckCircle2 className="ok" size={18} /> : <FileDiff className="warn-icon" size={18} />}
+          </div>
+          <div className="git-box">
+            <strong>Status</strong>
+            <pre>{git?.status || "clean"}</pre>
+          </div>
+          <div className="git-box">
+            <strong>Diff stat</strong>
+            <pre>{git?.diffStat || "no unstaged diff"}</pre>
+          </div>
+        </section>
+
+        <section className="ops-card setup-card">
+          <div className="panel-head">
+            <div>
+              <div className="section-label">{setup.label}</div>
+              <h2>{setup.title}</h2>
+            </div>
+            <div className="language-switch" aria-label="Language">
+              <button className={cx(lang === "en" && "active")} onClick={() => setLang("en")}>
+                <Globe2 size={12} />
+                EN
+              </button>
+              <button className={cx(lang === "zh-TW" && "active")} onClick={() => setLang("zh-TW")}>
+                繁中
+              </button>
+            </div>
+          </div>
+          <p className="setup-subtitle">{setup.subtitle}</p>
+          <div className="setup-list">
+            {setupRows.map((row) => (
+              <div className={cx("setup-row", row.status)} key={row.id}>
+                <span>{row.status === "ok" ? <CheckCircle2 size={14} /> : <AlertTriangle size={14} />}</span>
+                <div>
+                  <strong>{row.label}</strong>
+                  <small>{row.detail}</small>
+                </div>
+              </div>
+            ))}
+          </div>
+          <div className="compat-box">
+            <div className="compat-head">
+              <ListChecks size={14} />
+              <strong>{setup.compat}</strong>
+            </div>
+            <div className="compat-grid">
+              <div>
+                <span>Node</span>
+                <strong>{doctor?.node || "unknown"}</strong>
+              </div>
+              <div>
+                <span>OS</span>
+                <strong>{doctor?.platform || "unknown"}</strong>
+              </div>
+              <div>
+                <span>Claude</span>
+                <strong>{doctorById.get("wsl-claude")?.detail?.split("\n").pop() || "not checked"}</strong>
+              </div>
+              <div>
+                <span>Codex</span>
+                <strong>{doctorById.get("wsl-codex")?.detail?.split("\n").pop() || "not checked"}</strong>
+              </div>
+            </div>
+          </div>
+          <div className="setup-actions">
+            <button onClick={() => void copySetupCommand("install", setup.commands.install)}>
+              <Copy size={13} />
+              {copiedSetup === "install" ? setup.copied : setup.install}
+            </button>
+            <button onClick={() => void copySetupCommand("config", setup.commands.config)}>
+              <Copy size={13} />
+              {copiedSetup === "config" ? setup.copied : setup.config}
+            </button>
+            <button onClick={() => void copySetupCommand("run", setup.commands.run)}>
+              <BookOpen size={13} />
+              {copiedSetup === "run" ? setup.copied : setup.run}
+            </button>
+          </div>
+          <div className="docs-link">{setup.docs}: README.md, README.zh-TW.md, docs/getting-started.md</div>
+        </section>
+
+        <section className="ops-card config-manager">
+          <div className="panel-head">
+            <div>
+              <div className="section-label">Project Manager</div>
+              <h2>Projects & sessions</h2>
+            </div>
+            <Settings2 size={17} />
+          </div>
+          <div className="config-source">
+            <span>{config?.source.kind || "config"}</span>
+            <strong>{config?.source.path || "relay.local.json"}</strong>
+          </div>
+
+          <div className="config-block">
+            <div className="config-block-head">
+              <strong>Add project</strong>
+              <span>Writes to relay.local.json</span>
+            </div>
+            <input value={newProjectName} onChange={(event) => setNewProjectName(event.target.value)} placeholder="Project name" />
+            <input value={newProjectPath} onChange={(event) => setNewProjectPath(event.target.value)} placeholder="C:\\path\\to\\project" />
+            <button disabled={!!configBusy || !newProjectName.trim() || !newProjectPath.trim()} onClick={() => void addProjectConfig()}>
+              <Plus size={13} />
+              Add Project
+            </button>
+          </div>
+
+          <div className="config-block">
+            <div className="config-block-head">
+              <strong>{activeProject?.name || "No project"}</strong>
+              <span>{activeProject?.path || "Select a project"}</span>
+            </div>
+            <button className="danger-action" disabled={!!configBusy || projects.length <= 1 || !activeProject} onClick={() => void deleteProjectConfig()}>
+              <Trash2 size={13} />
+              Remove selected project
+            </button>
+          </div>
+
+          <div className="config-block">
+            <div className="config-block-head">
+              <strong>Add runner session</strong>
+              <span>Session config only; Start controls tmux.</span>
+            </div>
+            <select value={runnerType} onChange={(event) => setRunnerType(event.target.value)}>
+              <option value="claude-code">Claude Code tmux</option>
+              <option value="codex-cli">Codex CLI tmux</option>
+              <option value="custom">Custom tmux</option>
+            </select>
+            <input value={runnerSession} onChange={(event) => setRunnerSession(event.target.value)} placeholder={runnerPreset.session} />
+            <input value={runnerCwd} onChange={(event) => setRunnerCwd(event.target.value)} placeholder={runnerPreset.cwd || "tmux cwd"} />
+            <textarea
+              value={runnerStartCommand}
+              onChange={(event) => setRunnerStartCommand(event.target.value)}
+              placeholder={runnerPreset.startCommand}
+            />
+            <button disabled={!!configBusy || !activeProject} onClick={() => void addRunnerConfig()}>
+              <Plus size={13} />
+              Add Runner
+            </button>
+          </div>
+
+          <div className="runner-config-list">
+            {(activeConfigProject?.runners || []).map((runner) => (
+              <div className="runner-config-row" key={runner.id}>
+                <div>
+                  <strong>{runner.name}</strong>
+                  <span>{runner.session}</span>
+                </div>
+                <button disabled={!!configBusy} onClick={() => void deleteRunnerConfig(runner)} title={`Remove ${runner.session}`}>
+                  <Trash2 size={13} />
+                </button>
+              </div>
+            ))}
+            {!(activeConfigProject?.runners || []).length && <div className="empty-note">No runner sessions configured.</div>}
+          </div>
+        </section>
+
+        <section className="ops-card">
+          <div className="panel-head">
+            <div>
+              <div className="section-label">Readiness</div>
+              <h2>Doctor checks</h2>
+            </div>
+            {doctor?.summary.fail ? <AlertTriangle className="warn-icon" size={18} /> : <CheckCircle2 className="ok" size={18} />}
+          </div>
+          <div className="doctor-summary">
+            <span className="ok">{doctor?.summary.ok ?? 0} ok</span>
+            <span className={cx((doctor?.summary.warn ?? 0) > 0 && "warn-text")}>{doctor?.summary.warn ?? 0} warn</span>
+            <span className={cx((doctor?.summary.fail ?? 0) > 0 && "danger-text")}>{doctor?.summary.fail ?? 0} fail</span>
+          </div>
+          <div className="doctor-list">
+            {visibleDoctorChecks.map((item) => (
+              <div className={cx("doctor-row", item.status)} key={item.id}>
+                <span>{item.status === "ok" ? <CheckCircle2 size={14} /> : <AlertTriangle size={14} />}</span>
+                <div>
+                  <strong>{item.label}</strong>
+                  <small>{item.detail || item.fix || "No details."}</small>
+                </div>
+              </div>
+            ))}
+            {!visibleDoctorChecks.length && <div className="empty-note">Run refresh to load doctor checks.</div>}
+          </div>
+        </section>
+
+        <section className="ops-card usage-card">
+          <div className="panel-head">
+            <div>
+              <div className="section-label">Usage / Activity</div>
+              <h2>Local relay traffic</h2>
+            </div>
+            <Activity size={17} />
+          </div>
+          <div className="usage-grid">
+            <div>
+              <strong>{compactNumber(usage?.totals.sends ?? 0)}</strong>
+              <span>sends</span>
+            </div>
+            <div>
+              <strong>{compactNumber(usage?.totals.captures ?? 0)}</strong>
+              <span>captures</span>
+            </div>
+            <div>
+              <strong>{compactNumber(usage?.totals.snapshots ?? 0)}</strong>
+              <span>snapshots</span>
+            </div>
+            <div>
+              <strong>{formatBytes(usage?.totals.evidenceBytes ?? 0)}</strong>
+              <span>evidence</span>
+            </div>
+          </div>
+          <div className="usage-list">
+            {(usage?.runners || [])
+              .filter((row) => row.projectId === activeProject?.id)
+              .slice(0, 4)
+              .map((row) => (
+                <div className="usage-row" key={row.key}>
+                  <div>
+                    <strong>{row.runnerName}</strong>
+                    <small>{row.lastAction || "idle"} at {formatTime(row.lastAt)}</small>
+                  </div>
+                  <span>{row.sends} sent / {row.captures} cap / {row.snapshots} snap</span>
+                </div>
+              ))}
+            {!(usage?.runners || []).some((row) => row.projectId === activeProject?.id) && (
+              <div className="empty-note">No local relay activity yet.</div>
+            )}
+          </div>
+          <p className="usage-note">Tracks local actions only. It does not estimate model billing or provider tokens.</p>
+        </section>
+
+        <section className="ops-card">
+          <div className="panel-head">
+            <div>
+              <div className="section-label">Runner Ops</div>
+              <h2>tmux controls</h2>
+            </div>
+            <Power size={17} />
+          </div>
+          <div className="runner-stack">
+            {runners.map((runner) => (
+              <div className="runner-card" key={runner.id}>
+                <div className="runner-card-head">
+                  <div>
+                    <strong>{runner.name}</strong>
+                    <span>{runner.session}</span>
+                  </div>
+                  <RunnerDot state={runner.state} />
+                </div>
+                <div className="runner-actions">
+                  <button disabled={!!busyRunner || runner.state === "running"} onClick={() => void runRunner(runner, "start")}>
+                    <Play size={13} />
+                    Start
+                  </button>
+                  <button disabled={!!busyRunner || runner.state !== "running"} onClick={() => void runRunner(runner, "stop")}>
+                    <Square size={13} />
+                    Stop
+                  </button>
+                  <button disabled={!!busyRunner} onClick={() => void runRunner(runner, "restart")}>
+                    <RefreshCcw size={13} />
+                    Restart
+                  </button>
+                  <button disabled={!!busyRunner || runner.state !== "running"} onClick={() => void runRunner(runner, "capture")}>
+                    <FileDiff size={13} />
+                    Capture
+                  </button>
+                  <button disabled={!!busyRunner} onClick={() => void snapshotRunner(runner)}>
+                    <Camera size={13} />
+                    Snapshot
+                  </button>
+                  <button disabled={!!busyRunner || runner.state !== "running"} onClick={() => void runRunner(runner, "send")}>
+                    <Send size={13} />
+                    Send Task
+                  </button>
+                  <button className="wide-action" disabled={!!busyRunner || runner.state !== "running"} onClick={() => void runRunner(runner, "open")}>
+                    <Terminal size={13} />
+                    Open Terminal
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
+          <div className="slash-panel">
+            <div className="slash-head">
+              <div>
+                <strong>Slash command</strong>
+                <span>Send directly into the live tmux prompt.</span>
+              </div>
+              <select value={commandRunner?.id || ""} onChange={(event) => setCommandRunnerId(event.target.value)}>
+                {runners.map((runner) => (
+                  <option value={runner.id} key={runner.id}>
+                    {runner.session}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div className="slash-presets">
+              {slashCommandPresets.map((preset) => (
+                <button
+                  key={preset.id}
+                  disabled={!!busyRunner || commandRunner?.state !== "running"}
+                  title={preset.hint}
+                  onClick={() => void sendCliCommand(preset.command)}
+                >
+                  {preset.label}
+                </button>
+              ))}
+            </div>
+            <div className="slash-input-row">
+              <input
+                value={slashCommand}
+                onChange={(event) => setSlashCommand(event.target.value)}
+                onKeyDown={(event) => {
+                  if (event.key === "Enter") void sendCliCommand();
+                }}
+                placeholder="/round, /clear, /resume..."
+              />
+              <button disabled={!!busyRunner || commandRunner?.state !== "running" || !slashCommand.trim()} onClick={() => void sendCliCommand()}>
+                <Send size={13} />
+                Send
+              </button>
+            </div>
+            <p>Use Capture first if you are not sure the agent is waiting at an input prompt.</p>
+          </div>
+          <pre className="runner-output">{lastRunnerOutput || "Runner output appears here."}</pre>
+        </section>
+      </aside>
+    </main>
+  );
+}

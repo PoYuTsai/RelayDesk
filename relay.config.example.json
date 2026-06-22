@@ -1,0 +1,64 @@
+{
+  "projects": [
+    {
+      "id": "vibesync",
+      "name": "VibeSync",
+      "path": "C:\\path\\to\\VibeSync",
+      "runners": [
+        {
+          "id": "claude-code",
+          "name": "Claude Code tmux",
+          "kind": "tmux",
+          "session": "rc-vibesync",
+          "tmux": {
+            "mode": "wsl",
+            "cwd": "/mnt/c/path/to/VibeSync",
+            "startCommand": "bash -lc '~/.claude/channels/discord-vibesync/start.sh'"
+          }
+        },
+        {
+          "id": "codex-cli",
+          "name": "Codex CLI tmux",
+          "kind": "tmux",
+          "session": "rc-codex-vibesync",
+          "tmux": {
+            "mode": "wsl",
+            "cwd": "/mnt/c/path/to/VibeSync",
+            "startCommand": "bash -lc 'cd /mnt/c/path/to/VibeSync && codex --no-alt-screen --dangerously-bypass-approvals-and-sandbox -C /mnt/c/path/to/VibeSync'",
+            "dismissCodexUpdatePrompt": true
+          }
+        }
+      ]
+    },
+    {
+      "id": "travelapp",
+      "name": "TravelAPP",
+      "path": "C:\\path\\to\\TravelAPP",
+      "runners": [
+        {
+          "id": "claude-code",
+          "name": "Claude Code tmux",
+          "kind": "tmux",
+          "session": "rc-travel",
+          "tmux": {
+            "mode": "wsl",
+            "cwd": "/mnt/c/path/to/TravelAPP",
+            "startCommand": "bash -lc 'cd /mnt/c/path/to/TravelAPP && claude'"
+          }
+        },
+        {
+          "id": "codex-cli",
+          "name": "Codex CLI tmux",
+          "kind": "tmux",
+          "session": "rc-codex-travel",
+          "tmux": {
+            "mode": "wsl",
+            "cwd": "/mnt/c/path/to/TravelAPP",
+            "startCommand": "bash -lc 'cd /mnt/c/path/to/TravelAPP && codex --no-alt-screen --dangerously-bypass-approvals-and-sandbox -C /mnt/c/path/to/TravelAPP'",
+            "dismissCodexUpdatePrompt": true
+          }
+        }
+      ]
+    }
+  ]
+}
