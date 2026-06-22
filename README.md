@@ -26,11 +26,19 @@ tired of copying text, screenshots, and decisions between windows.
 
 Example flow:
 
-1. Ask Claude Code to investigate a bug.
-2. Capture Claude's question or screenshot.
-3. Send the decision or snapshot to Codex for a second opinion.
-4. Send Codex's challenge back to Claude.
-5. Let only one agent write code while the other reviews the diff.
+1. Start with either agent to discuss an idea, spec, TDD plan, or bug-fix path.
+2. Send the task, decision, screenshot, log, or snapshot to the other agent for
+   a second perspective.
+3. Pick one agent as the builder for the current round and the other as the
+   reviewer, challenger, or second opinion.
+4. When either agent asks for a choice, gets stuck, or disagrees, route that
+   moment into the Decision Inbox.
+5. Make the final human decision, then send the verdict back to whichever agent
+   needs to continue.
+
+You can work Codex-first or Claude-first. RelayDesk does not assume which agent
+should discuss, implement, or review; it keeps the bidirectional workflow,
+evidence, and decisions in one local loop.
 
 ## What RelayDesk Is Not
 

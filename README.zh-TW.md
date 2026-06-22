@@ -20,11 +20,14 @@ RelayDesk 是一個本機 agent 工作台，用來協調 Claude Code、Codex CLI
 
 如果你常常這樣工作，RelayDesk 就是為你做的：
 
-1. 先跟 Codex 討論想法。
-2. 把結論複製到 Claude Code 執行。
-3. Claude Code 問你選項或卡住。
-4. 你截圖回來問 Codex。
-5. 再把 Codex 的意見貼回 Claude Code。
+1. 先跟其中一個 agent 討論想法、規格、TDD 計畫或修 bug 方向。
+2. 把 task、decision、screenshot、log 或 snapshot 送給另一個 agent 補盲點。
+3. 選一邊當本輪 builder，另一邊當 reviewer、challenger 或第二意見。
+4. 當任何一邊問你選項、卡住、或提出不同判斷時，集中到 Decision Inbox。
+5. 你做最後決策，再把 verdict 送回需要繼續工作的 agent。
+
+你可以 Codex-first，也可以 Claude-first。RelayDesk 不預設哪一邊比較適合
+討論、實作或 review；它只負責把雙向協作、證據和決策整理在同一個本機流程裡。
 
 RelayDesk 的目標是把這個來回變成：
 
