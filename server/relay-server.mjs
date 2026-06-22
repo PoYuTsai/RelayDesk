@@ -199,6 +199,9 @@ async function editConfig(config, body) {
     if (!runner) throw new Error(`Runner not found: ${body.runnerId}`);
     if (body.model !== undefined) runner.model = String(body.model || "");
     if (body.accessMode !== undefined) runner.accessMode = String(body.accessMode || "");
+    if (body.effortMode !== undefined) runner.effortMode = String(body.effortMode || "");
+    if (body.reasoningMode !== undefined) runner.reasoningMode = String(body.reasoningMode || "");
+    if (body.speedMode !== undefined) runner.speedMode = String(body.speedMode || "");
     if (body.tmux && typeof body.tmux === "object") {
       runner.tmux = { ...(runner.tmux || {}), ...body.tmux };
     }

@@ -555,9 +555,10 @@ button {
 }
 
 .focus-composer {
+  position: relative;
   flex: 0 0 auto;
   display: grid;
-  grid-template-columns: 204px minmax(260px, 1fr) auto 88px;
+  grid-template-columns: 210px minmax(260px, 1fr) auto 88px;
   gap: 8px;
   align-items: end;
   padding: 12px;
@@ -579,11 +580,8 @@ button {
 }
 
 .composer-target-select {
+  position: relative;
   min-width: 0;
-  display: grid;
-  grid-template-columns: 42px minmax(0, 1fr);
-  gap: 8px;
-  align-items: center;
 }
 
 .composer-target-avatar {
@@ -595,8 +593,28 @@ button {
   background: #11161d;
 }
 
-.composer-target-select select {
+.composer-target-button {
   width: 100%;
+  height: 42px;
+  display: grid;
+  grid-template-columns: 42px minmax(0, 1fr) 14px;
+  gap: 8px;
+  align-items: center;
+  padding: 0;
+  color: var(--text);
+  text-align: left;
+  background: transparent;
+  border: 0;
+  cursor: pointer;
+}
+
+.composer-target-button span {
+  min-width: 0;
+  overflow: hidden;
+  font-size: 16px;
+  font-weight: 800;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .composer-input-wrap {
@@ -670,12 +688,13 @@ button {
 }
 
 .composer-controls {
+  position: relative;
   display: inline-flex;
   gap: 6px;
   min-width: 0;
 }
 
-.composer-controls select,
+.composer-native-trigger,
 .tool-toggle {
   white-space: nowrap;
 }
@@ -686,20 +705,207 @@ button {
   border-color: rgba(45, 212, 191, 0.78);
 }
 
-.composer-controls select {
+.composer-native-trigger {
   height: 42px;
-  min-width: 118px;
-  padding: 0 10px;
+  min-width: 98px;
+  display: inline-flex;
+  gap: 6px;
+  align-items: center;
+  justify-content: center;
+  padding: 0 12px;
   color: var(--muted);
   background: #11161d;
   border: 1px solid var(--line-soft);
   border-radius: 10px;
   font-size: 12px;
   font-weight: 800;
+  cursor: pointer;
 }
 
-.composer-controls select:disabled {
+.composer-native-trigger:hover:not(:disabled),
+.composer-native-trigger[aria-expanded="true"] {
+  color: var(--text);
+  border-color: rgba(45, 212, 191, 0.42);
+  background: #151b22;
+}
+
+.composer-native-trigger small {
+  color: var(--accent-2);
+  font-size: 11px;
+}
+
+.composer-native-trigger.both {
+  min-width: 118px;
+}
+
+.composer-native-trigger:disabled {
   opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.composer-menu {
+  position: absolute;
+  right: 0;
+  bottom: calc(100% + 10px);
+  z-index: 35;
+  width: min(360px, calc(100vw - 40px));
+  padding: 10px;
+  color: var(--text);
+  background: rgba(17, 22, 29, 0.98);
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  box-shadow: var(--shadow);
+}
+
+.composer-target-menu {
+  right: auto;
+  left: 0;
+  width: 310px;
+}
+
+.composer-settings-menu {
+  width: 360px;
+}
+
+.composer-access-menu {
+  width: 330px;
+}
+
+.composer-effort-menu {
+  width: 340px;
+}
+
+.composer-menu-title {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  padding: 4px 6px 9px;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.composer-menu-title strong {
+  color: #b794f6;
+}
+
+.composer-menu-section {
+  padding: 8px 0;
+  border-top: 1px solid var(--line-soft);
+}
+
+.composer-menu-section > span {
+  display: block;
+  padding: 0 6px 6px;
+  color: var(--faint);
+  font-size: 11px;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
+.composer-menu-row,
+.composer-target-row {
+  width: 100%;
+  min-height: 44px;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 28px;
+  gap: 10px;
+  align-items: center;
+  padding: 8px 10px;
+  color: var(--text);
+  text-align: left;
+  background: transparent;
+  border-radius: 10px;
+  cursor: pointer;
+}
+
+.composer-target-row {
+  grid-template-columns: 34px minmax(0, 1fr) 18px;
+}
+
+.composer-menu-row:hover:not(:disabled),
+.composer-target-row:hover,
+.composer-menu-row.selected,
+.composer-target-row.selected {
+  background: rgba(45, 212, 191, 0.11);
+}
+
+.composer-menu-row.disabled,
+.composer-menu-row:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+
+.composer-menu-row strong,
+.composer-target-row strong {
+  display: block;
+  overflow: hidden;
+  font-size: 14px;
+  line-height: 1.25;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.composer-menu-row small,
+.composer-target-row small {
+  display: block;
+  min-width: 0;
+  overflow: hidden;
+  margin-top: 3px;
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 600;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.composer-menu-mark {
+  display: grid;
+  place-items: center;
+  color: var(--muted);
+  font-size: 13px;
+  font-weight: 800;
+}
+
+.composer-menu-row.selected .composer-menu-mark,
+.composer-target-row.selected {
+  color: var(--accent);
+}
+
+.composer-menu-avatar {
+  width: 34px;
+  height: 34px;
+  display: block;
+  border: 1px solid rgba(226, 232, 240, 0.12);
+  border-radius: 9px;
+  background: #11161d;
+}
+
+.effort-track {
+  display: grid;
+  grid-template-columns: auto minmax(110px, 1fr) auto;
+  gap: 10px;
+  align-items: center;
+  padding: 4px 10px 12px;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.effort-bar {
+  height: 12px;
+  overflow: hidden;
+  background: #262c35;
+  border-radius: 999px;
+}
+
+.effort-bar i {
+  display: block;
+  height: 100%;
+  background:
+    linear-gradient(90deg, rgba(226, 232, 240, 0.24), rgba(167, 139, 250, 0.84)),
+    repeating-linear-gradient(90deg, rgba(255, 255, 255, 0.14) 0 2px, transparent 2px 5px);
+  border-radius: inherit;
 }
 
 .focus-composer > button {

@@ -5,3 +5,4 @@ relay.local.json
 .DS_Store
 .env
 .relaydesk/
+public/assets/agents.local/

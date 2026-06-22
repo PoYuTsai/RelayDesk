@@ -8,6 +8,7 @@ import {
   Camera,
   Check,
   CheckCircle2,
+  ChevronDown,
   CircleDot,
   Copy,
   FileDiff,
@@ -48,6 +49,9 @@ type ConfigRunner = {
   session: string;
   model?: string;
   accessMode?: string;
+  effortMode?: string;
+  reasoningMode?: string;
+  speedMode?: string;
   tmux?: {
     mode?: RunnerMode;
     cwd?: string;
@@ -355,45 +359,104 @@ type SlashCommandPreset = {
   aliases?: string[];
 };
 
+type ComposerMenuId =
+  | ""
+  | "target"
+  | "claude-model"
+  | "claude-effort"
+  | "claude-access"
+  | "codex-settings"
+  | "codex-access";
+
+type ComposerOption = {
+  label: string;
+  value: string;
+  hint?: string;
+  key?: string;
+  disabled?: boolean;
+  custom?: boolean;
+};
+
+type AgentAvatarAsset = {
+  src: string;
+  fallbackSrc?: string;
+  alt: string;
+};
+
 const steps = ["Discuss", "Synthesize", "Build", "Review", "Verify"];
 const BOTH_RUNNERS_ID = "__both";
 
-const modelOptionsByRunner: Record<string, Array<{ label: string; value: string }>> = {
+const modelOptionsByRunner: Record<string, ComposerOption[]> = {
   "claude-code": [
-    { label: "Opus 4.8", value: "opus" },
-    { label: "Sonnet 4.8", value: "sonnet" }
+    { label: "Opus 4.8", value: "opus", key: "1", hint: "Hardest coding and architecture work." },
+    { label: "Sonnet 4.6", value: "sonnet", key: "2", hint: "Balanced daily coding." },
+    { label: "Haiku 4.5", value: "haiku", key: "3", hint: "Fast lightweight tasks." },
+    { label: "More models...", value: "__custom-model", hint: "Type any Claude alias or full model id.", custom: true }
   ],
   "codex-cli": [
-    { label: "GPT-5.5 xHigh", value: "gpt-5.5" },
-    { label: "Default", value: "" }
+    { label: "GPT-5.5", value: "gpt-5.5", hint: "Latest Codex target model." },
+    { label: "GPT-5.4", value: "gpt-5.4", hint: "Stable high-capability fallback." },
+    { label: "GPT-5.4 mini", value: "gpt-5.4-mini", hint: "Faster lightweight Codex work." },
+    { label: "GPT-5.3 Codex Spark", value: "gpt-5.3-codex-spark", hint: "Fast coding preset." },
+    { label: "Config default", value: "", hint: "Use ~/.codex/config.toml." },
+    { label: "More models...", value: "__custom-model", hint: "Type any Codex model id.", custom: true }
   ]
 };
 
-const accessOptionsByRunner: Record<string, Array<{ label: string; value: string }>> = {
+const effortOptionsByRunner: Record<string, ComposerOption[]> = {
   "claude-code": [
-    { label: "Accept edits", value: "acceptEdits" },
-    { label: "Bypass", value: "bypassPermissions" }
+    { label: "Low", value: "low", key: "1", hint: "Faster, lighter reasoning." },
+    { label: "Medium", value: "medium", key: "2", hint: "Default balanced effort." },
+    { label: "High", value: "high", key: "3", hint: "More careful coding work." },
+    { label: "Ultracode", value: "max", key: "4", hint: "Maximum Claude Code effort." }
   ],
   "codex-cli": [
-    { label: "Read only", value: "read-only" },
-    { label: "Workspace", value: "workspace-write" },
-    { label: "Full access", value: "danger-full-access" }
+    { label: "Minimal", value: "minimal", hint: "Smallest reasoning budget." },
+    { label: "Low", value: "low", hint: "Faster reasoning." },
+    { label: "Medium", value: "medium", hint: "Balanced reasoning." },
+    { label: "High", value: "high", hint: "Deeper reasoning." },
+    { label: "xHigh", value: "xhigh", hint: "Highest Codex reasoning." }
+  ]
+};
+
+const speedOptionsByRunner: Record<string, ComposerOption[]> = {
+  "codex-cli": [
+    { label: "Standard", value: "", hint: "Use default service tier." },
+    { label: "Fast", value: "fast", hint: "Faster responses; may increase usage." }
+  ]
+};
+
+const accessOptionsByRunner: Record<string, ComposerOption[]> = {
+  "claude-code": [
+    { label: "Ask permissions", value: "default", key: "1", hint: "Claude asks before edits and tools." },
+    { label: "Accept edits", value: "acceptEdits", key: "2", hint: "Accept code edits without extra friction." },
+    { label: "Plan mode", value: "plan", key: "3", hint: "Discuss and plan before implementation." },
+    { label: "Auto mode", value: "auto", key: "4", hint: "Let Claude classify the right mode." },
+    { label: "Bypass permissions", value: "bypassPermissions", key: "5", hint: "Use only in a trusted local workspace." }
+  ],
+  "codex-cli": [
+    { label: "Ask me", value: "ask", hint: "Workspace sandbox; ask before untrusted actions." },
+    { label: "Auto approve", value: "workspace-write", hint: "Workspace sandbox; agent asks when needed." },
+    { label: "Full access", value: "danger-full-access", hint: "No sandbox or approvals. Use with care." },
+    { label: "Custom", value: "custom", hint: "Use ~/.codex/config.toml." }
   ]
 };
 
 const bothModelOptions = [{ label: "Each agent", value: "" }];
 const bothAccessOptions = [{ label: "Each agent", value: "" }];
-const aiRoomAvatar = {
-  src: "/assets/agents/ai-room.svg",
+const aiRoomAvatar: AgentAvatarAsset = {
+  src: "/relaydesk.svg",
   alt: "AI Room"
 };
-const agentAvatars: Record<string, { src: string; alt: string }> = {
+const agentAvatars: Record<string, AgentAvatarAsset> = {
   "claude-code": {
-    src: "/assets/agents/claude-code.svg",
+    src: "/assets/agents.local/claude-code.png",
+    fallbackSrc: "/assets/agents/claude-code.svg",
     alt: "Claude Code"
   },
   "codex-cli": {
-    src: "/assets/agents/codex.svg",
+    src: "/assets/agents.local/codex.png",
+    fallbackSrc: "/assets/agents/codex.svg",
     alt: "Codex"
   }
 };
@@ -1487,6 +1550,42 @@ function RunnerDot({ state }: { state: Runner["state"] }) {
   return <span className={cx("runner-dot", state)} />;
 }
 
+function AgentAvatar({ asset, className, decorative = true }: { asset: AgentAvatarAsset; className: string; decorative?: boolean }) {
+  return (
+    <img
+      className={className}
+      src={asset.src}
+      alt={decorative ? "" : asset.alt}
+      aria-hidden={decorative ? "true" : undefined}
+      onError={(event) => {
+        if (asset.fallbackSrc && event.currentTarget.src !== new URL(asset.fallbackSrc, window.location.origin).href) {
+          event.currentTarget.src = asset.fallbackSrc;
+        }
+      }}
+    />
+  );
+}
+
+function ComposerOptionRow({
+  option,
+  selected,
+  onSelect
+}: {
+  option: ComposerOption;
+  selected: boolean;
+  onSelect: () => void;
+}) {
+  return (
+    <button className={cx("composer-menu-row", selected && "selected")} disabled={option.disabled} onMouseDown={(event) => event.preventDefault()} onClick={onSelect}>
+      <span>
+        <strong>{option.label}</strong>
+        {option.hint && <small>{option.hint}</small>}
+      </span>
+      <span className="composer-menu-mark">{selected ? <Check size={14} /> : option.key}</span>
+    </button>
+  );
+}
+
 function AppShellSkeleton() {
   return (
     <div className="loading-shell">
@@ -1712,10 +1811,26 @@ function unquoteShellValue(value = "") {
   return trimmed;
 }
 
+function quoteCliConfigValue(value: string) {
+  return JSON.stringify(value);
+}
+
 function readCliOptionValue(command: string, option: string) {
   const escaped = escapeRegExp(option);
   const match = command.match(new RegExp(`(?:^|\\s)${escaped}(?:=(${shellValuePattern()})|\\s+(${shellValuePattern()}))`));
   return unquoteShellValue(match?.[1] || match?.[2] || "");
+}
+
+function stripCodexConfigOption(command: string, key: string) {
+  const escapedKey = escapeRegExp(key);
+  const pattern = new RegExp(`(^|\\s)(?:-c|--config)(?:\\s+|=)${escapedKey}=${shellValuePattern()}`, "g");
+  return command.replace(pattern, "$1").replace(/\s{2,}/g, " ").trim();
+}
+
+function readCodexConfigValue(command: string, key: string) {
+  const escapedKey = escapeRegExp(key);
+  const match = command.match(new RegExp(`(?:^|\\s)(?:-c|--config)(?:\\s+|=)${escapedKey}=(${shellValuePattern()})`));
+  return unquoteShellValue(match?.[1] || "");
 }
 
 function appendShellCommandFlags(command: string, flags: string) {
@@ -1738,6 +1853,27 @@ function applyRunnerModelToStartCommand(runnerId: string, startCommand: string, 
   return appendShellCommandFlags(clean, `--model ${model}`);
 }
 
+function applyRunnerEffortToStartCommand(runnerId: string, startCommand: string, effortMode: string) {
+  if (runnerId === "claude-code") {
+    const clean = stripCliOptions(startCommand, [{ option: "--effort", hasValue: true }]);
+    if (!effortMode) return clean;
+    return appendShellCommandFlags(clean, `--effort ${effortMode}`);
+  }
+  if (runnerId === "codex-cli") {
+    const clean = stripCodexConfigOption(startCommand, "model_reasoning_effort");
+    if (!effortMode) return clean;
+    return appendShellCommandFlags(clean, `-c model_reasoning_effort=${quoteCliConfigValue(effortMode)}`);
+  }
+  return startCommand;
+}
+
+function applyRunnerSpeedToStartCommand(runnerId: string, startCommand: string, speedMode: string) {
+  if (runnerId !== "codex-cli") return startCommand;
+  const clean = stripCodexConfigOption(startCommand, "service_tier");
+  if (!speedMode) return clean;
+  return appendShellCommandFlags(clean, `-c service_tier=${quoteCliConfigValue(speedMode)}`);
+}
+
 function applyRunnerAccessToStartCommand(runnerId: string, startCommand: string, accessMode: string) {
   if (runnerId === "claude-code") {
     const clean = stripCliOptions(startCommand, [
@@ -1745,7 +1881,7 @@ function applyRunnerAccessToStartCommand(runnerId: string, startCommand: string,
       { option: "--dangerously-skip-permissions", hasValue: false }
     ]);
     if (accessMode === "bypassPermissions") return appendShellCommandFlags(clean, "--dangerously-skip-permissions");
-    if (accessMode === "acceptEdits") return appendShellCommandFlags(clean, "--permission-mode acceptEdits");
+    if (accessMode) return appendShellCommandFlags(clean, `--permission-mode ${accessMode}`);
     return clean;
   }
 
@@ -1759,8 +1895,9 @@ function applyRunnerAccessToStartCommand(runnerId: string, startCommand: string,
       { option: "--dangerously-bypass-approvals-and-sandbox", hasValue: false }
     ]);
     if (accessMode === "danger-full-access") return appendShellCommandFlags(clean, "--dangerously-bypass-approvals-and-sandbox");
-    if (accessMode === "workspace-write" || accessMode === "read-only") {
-      return appendShellCommandFlags(clean, `--sandbox ${accessMode} --ask-for-approval on-request`);
+    if (accessMode === "workspace-write") return appendShellCommandFlags(clean, "--full-auto");
+    if (accessMode === "ask") {
+      return appendShellCommandFlags(clean, "--sandbox workspace-write --ask-for-approval untrusted");
     }
     return clean;
   }
@@ -1779,27 +1916,49 @@ function commandAccessValue(runnerId: string, startCommand = "") {
   }
   if (runnerId === "codex-cli") {
     if (/--dangerously-bypass-approvals-and-sandbox\b/.test(startCommand)) return "danger-full-access";
+    const approval = readCliOptionValue(startCommand, "--ask-for-approval") || readCliOptionValue(startCommand, "-a");
+    if (approval === "untrusted") return "ask";
     const sandbox = readCliOptionValue(startCommand, "--sandbox") || readCliOptionValue(startCommand, "-s");
-    if (sandbox === "workspace-write" || sandbox === "read-only") return sandbox;
+    if (sandbox === "workspace-write") return "workspace-write";
     if (/--full-auto\b/.test(startCommand)) return "workspace-write";
     return "danger-full-access";
   }
   return "";
 }
 
-function selectOptionValue(options: Array<{ label: string; value: string }>, value: string, fallback = "") {
+function commandEffortValue(runnerId: string, startCommand = "") {
+  if (runnerId === "claude-code") return readCliOptionValue(startCommand, "--effort") || "max";
+  if (runnerId === "codex-cli") return readCodexConfigValue(startCommand, "model_reasoning_effort") || "xhigh";
+  return "";
+}
+
+function commandSpeedValue(runnerId: string, startCommand = "") {
+  if (runnerId === "codex-cli") return readCodexConfigValue(startCommand, "service_tier") || "";
+  return "";
+}
+
+function selectOptionValue(options: Array<{ label: string; value: string }>, value: string, fallback = "", preserveUnknown = false) {
   if (options.some((option) => option.value === value)) return value;
+  if (preserveUnknown && value) return value;
   return fallback || options[0]?.value || "";
+}
+
+function composerOptionLabel(options: ComposerOption[], value: string, fallback: string) {
+  return options.find((option) => option.value === value)?.label || value || fallback;
+}
+
+function isSafeModelId(value: string) {
+  return /^[a-z0-9._:/@-]+$/i.test(value);
 }
 
 function runnerConfiguredModelValue(runner: Runner | undefined, configRunner: ConfigRunner | undefined) {
   if (!runner) return "";
   const options = modelOptionsByRunner[runner.id] || [];
   if (configRunner && Object.prototype.hasOwnProperty.call(configRunner, "model")) {
-    return selectOptionValue(options, String(configRunner.model || ""));
+    return selectOptionValue(options, String(configRunner.model || ""), "", true);
   }
   const parsed = commandModelValue(configRunner?.tmux?.startCommand || "");
-  return selectOptionValue(options, parsed);
+  return selectOptionValue(options, parsed, "", true);
 }
 
 function runnerConfiguredAccessValue(runner: Runner | undefined, configRunner: ConfigRunner | undefined) {
@@ -1809,6 +1968,26 @@ function runnerConfiguredAccessValue(runner: Runner | undefined, configRunner: C
     return selectOptionValue(options, String(configRunner.accessMode || ""));
   }
   const parsed = commandAccessValue(runner.id, configRunner?.tmux?.startCommand || "");
+  return selectOptionValue(options, parsed);
+}
+
+function runnerConfiguredEffortValue(runner: Runner | undefined, configRunner: ConfigRunner | undefined) {
+  if (!runner) return "";
+  const options = effortOptionsByRunner[runner.id] || [];
+  if (configRunner && Object.prototype.hasOwnProperty.call(configRunner, "effortMode")) {
+    return selectOptionValue(options, String(configRunner.effortMode || ""));
+  }
+  const parsed = commandEffortValue(runner.id, configRunner?.tmux?.startCommand || "");
+  return selectOptionValue(options, parsed);
+}
+
+function runnerConfiguredSpeedValue(runner: Runner | undefined, configRunner: ConfigRunner | undefined) {
+  if (!runner) return "";
+  const options = speedOptionsByRunner[runner.id] || [];
+  if (configRunner && Object.prototype.hasOwnProperty.call(configRunner, "speedMode")) {
+    return selectOptionValue(options, String(configRunner.speedMode || ""));
+  }
+  const parsed = commandSpeedValue(runner.id, configRunner?.tmux?.startCommand || "");
   return selectOptionValue(options, parsed);
 }
 
@@ -1960,6 +2139,7 @@ export function App() {
   const [configBusy, setConfigBusy] = useState("");
   const [lang, setLang] = useState<Lang>("zh-TW");
   const [bootError, setBootError] = useState("");
+  const [composerMenu, setComposerMenu] = useState<ComposerMenuId>("");
   const activeProjectIdRef = useRef("");
 
   const activeProject = useMemo(
@@ -2026,6 +2206,10 @@ export function App() {
   useEffect(() => {
     setSlashMenuIndex(0);
   }, [consoleInput, commandRunner?.id]);
+
+  useEffect(() => {
+    setComposerMenu("");
+  }, [commandRunnerId, activeProject?.id]);
 
   const writerRunner = useMemo(() => {
     return runners.find((runner) => runner.id === writerRunnerId) || runners.find((runner) => runner.id === "claude-code") || runners[0];
@@ -3828,7 +4012,10 @@ export function App() {
     await postConfigAction({ action: "delete-runner", projectId: activeProject.id, runnerId: runner.id }, activeProject.id);
   }
 
-  async function updateRunnerRuntimeConfig(runner: Runner | undefined, changes: { model?: string; accessMode?: string }) {
+  async function updateRunnerRuntimeConfig(
+    runner: Runner | undefined,
+    changes: { model?: string; accessMode?: string; effortMode?: string; reasoningMode?: string; speedMode?: string }
+  ) {
     if (!activeProject || !runner) return;
     const configRunner = findConfigRunner(activeConfigProject, runner);
     if (!configRunner) {
@@ -3848,6 +4035,15 @@ export function App() {
     if (changes.model !== undefined) {
       startCommand = applyRunnerModelToStartCommand(runner.id, startCommand, changes.model);
     }
+    if (changes.effortMode !== undefined) {
+      startCommand = applyRunnerEffortToStartCommand(runner.id, startCommand, changes.effortMode);
+    }
+    if (changes.reasoningMode !== undefined) {
+      startCommand = applyRunnerEffortToStartCommand(runner.id, startCommand, changes.reasoningMode);
+    }
+    if (changes.speedMode !== undefined) {
+      startCommand = applyRunnerSpeedToStartCommand(runner.id, startCommand, changes.speedMode);
+    }
     if (changes.accessMode !== undefined) {
       startCommand = applyRunnerAccessToStartCommand(runner.id, startCommand, changes.accessMode);
     }
@@ -3859,6 +4055,9 @@ export function App() {
         runnerId: configRunner.id,
         ...(changes.model !== undefined ? { model: changes.model } : {}),
         ...(changes.accessMode !== undefined ? { accessMode: changes.accessMode } : {}),
+        ...(changes.effortMode !== undefined ? { effortMode: changes.effortMode } : {}),
+        ...(changes.reasoningMode !== undefined ? { reasoningMode: changes.reasoningMode } : {}),
+        ...(changes.speedMode !== undefined ? { speedMode: changes.speedMode } : {}),
         tmux: {
           ...(configRunner.tmux || {}),
           startCommand
@@ -3870,19 +4069,59 @@ export function App() {
 
     const modelLabel =
       changes.model !== undefined
-        ? (modelOptionsByRunner[runner.id] || []).find((option) => option.value === changes.model)?.label || "Default model"
+        ? composerOptionLabel(modelOptionsByRunner[runner.id] || [], changes.model, changes.model || "Config default")
         : "";
     const accessLabel =
       changes.accessMode !== undefined
         ? (accessOptionsByRunner[runner.id] || []).find((option) => option.value === changes.accessMode)?.label || "Access"
         : "";
-    const changed = [modelLabel && `model ${modelLabel}`, accessLabel && `access ${accessLabel}`].filter(Boolean).join(" / ");
+    const effortLabel =
+      changes.effortMode !== undefined
+        ? (effortOptionsByRunner[runner.id] || []).find((option) => option.value === changes.effortMode)?.label || "Effort"
+        : "";
+    const reasoningLabel =
+      changes.reasoningMode !== undefined
+        ? (effortOptionsByRunner[runner.id] || []).find((option) => option.value === changes.reasoningMode)?.label || "Reasoning"
+        : "";
+    const speedLabel =
+      changes.speedMode !== undefined
+        ? (speedOptionsByRunner[runner.id] || []).find((option) => option.value === changes.speedMode)?.label || "Speed"
+        : "";
+    const changed = [
+      modelLabel && `model ${modelLabel}`,
+      effortLabel && `effort ${effortLabel}`,
+      reasoningLabel && `reasoning ${reasoningLabel}`,
+      speedLabel && `speed ${speedLabel}`,
+      accessLabel && `access ${accessLabel}`
+    ].filter(Boolean).join(" / ");
     const applyNote =
       runner.state === "running"
         ? `Saved ${runnerComposerName(runner)} ${changed}. Restart ${runner.session} to apply, or use the native /model menu for the current live session.`
         : `Saved ${runnerComposerName(runner)} ${changed}. Start ${runner.session} to apply.`;
     setLastRunnerOutput(applyNote);
     appendRunnerPaneOutput(runner.id, `[RelayDesk config]\n${applyNote}`);
+  }
+
+  function selectComposerModelOption(runner: Runner | undefined, option: ComposerOption) {
+    if (!runner) return;
+    if (option.custom) {
+      const currentConfigRunner = findConfigRunner(activeConfigProject, runner);
+      const currentValue = runnerConfiguredModelValue(runner, currentConfigRunner);
+      const typed = window.prompt(`Model id for ${runnerComposerName(runner)}`, currentValue && currentValue !== option.value ? currentValue : "");
+      const nextModel = typed?.trim();
+      if (!nextModel) return;
+      if (!isSafeModelId(nextModel)) {
+        const message = "Model id can only contain letters, numbers, dot, dash, underscore, slash, colon, or @.";
+        setLastRunnerOutput(message);
+        replaceConsoleOutput(runner.id, message, "error");
+        return;
+      }
+      void updateRunnerRuntimeConfig(runner, { model: nextModel });
+      setComposerMenu("");
+      return;
+    }
+    void updateRunnerRuntimeConfig(runner, { model: option.value });
+    setComposerMenu("");
   }
 
   if (bootError) return <div className="loading-shell error">{bootError}</div>;
@@ -3904,14 +4143,30 @@ export function App() {
   const composerAccessOptions = composerTargetIsBoth || !selectedRunnerForComposer
     ? bothAccessOptions
     : accessOptionsByRunner[selectedRunnerForComposer.id] || bothAccessOptions;
+  const composerEffortOptions = composerTargetIsBoth || !selectedRunnerForComposer
+    ? []
+    : effortOptionsByRunner[selectedRunnerForComposer.id] || [];
+  const composerSpeedOptions = composerTargetIsBoth || !selectedRunnerForComposer
+    ? []
+    : speedOptionsByRunner[selectedRunnerForComposer.id] || [];
   const composerModelValue = composerTargetIsBoth
     ? ""
     : runnerConfiguredModelValue(selectedRunnerForComposer, selectedConfigRunnerForComposer);
   const composerAccessValue = composerTargetIsBoth
     ? ""
     : runnerConfiguredAccessValue(selectedRunnerForComposer, selectedConfigRunnerForComposer);
+  const composerEffortValue = composerTargetIsBoth
+    ? ""
+    : runnerConfiguredEffortValue(selectedRunnerForComposer, selectedConfigRunnerForComposer);
+  const composerSpeedValue = composerTargetIsBoth
+    ? ""
+    : runnerConfiguredSpeedValue(selectedRunnerForComposer, selectedConfigRunnerForComposer);
   const composerSettingsDisabled = composerTargetIsBoth || !selectedRunnerForComposer || !!configBusy;
   const composerAvatar = composerTargetIsBoth ? aiRoomAvatar : runnerAvatar(selectedRunnerForComposer);
+  const composerModelLabel = composerOptionLabel(composerModelOptions, composerModelValue, "Model");
+  const composerAccessLabel = composerAccessOptions.find((option) => option.value === composerAccessValue)?.label || "Access";
+  const composerEffortLabel = composerEffortOptions.find((option) => option.value === composerEffortValue)?.label || "Effort";
+  const composerSpeedLabel = composerSpeedOptions.find((option) => option.value === composerSpeedValue)?.label || "Speed";
   const composerSlashBlocked = composerTargetIsBoth && consoleInput.trim().startsWith("/");
   const composerCanSend = composerTargetReady && !composerSlashBlocked;
   const selectedConsoleOutput =
@@ -4033,7 +4288,7 @@ export function App() {
               return (
                 <div className="runner-mini" key={`focus-runner-${runner.id}`}>
                   <span className="runner-mini-avatar-wrap">
-                    <img className="runner-mini-avatar" src={avatar.src} alt="" aria-hidden="true" />
+                    <AgentAvatar className="runner-mini-avatar" asset={avatar} />
                     <RunnerDot state={runner.state} />
                   </span>
                   <span>{runner.session}</span>
@@ -4134,7 +4389,7 @@ export function App() {
               >
                 <div className="focus-agent-head">
                   <div className="agent-title-row">
-                    <img className="agent-avatar" src={avatar.src} alt="" aria-hidden="true" />
+                    <AgentAvatar className="agent-avatar" asset={avatar} />
                     <div>
                       <strong>{shortRunnerName(runner.name)}</strong>
                       <span>{runner.session}</span>
@@ -4235,15 +4490,60 @@ export function App() {
 
         <section className="focus-composer">
           <div className="composer-target-select">
-            <img className="composer-target-avatar" src={composerAvatar.src} alt={composerAvatar.alt} />
-            <select value={composerTargetIsBoth ? BOTH_RUNNERS_ID : selectedRunnerForComposer?.id || ""} disabled={!runners.length} onChange={(event) => setCommandRunnerId(event.target.value)}>
-              {focusRunners.length > 1 && <option value={BOTH_RUNNERS_ID}>Both</option>}
-              {runners.map((runner) => (
-                <option value={runner.id} key={`focus-compose-${runner.id}`}>
-                  {runnerComposerName(runner)}
-                </option>
-              ))}
-            </select>
+            <button
+              className="composer-target-button"
+              disabled={!runners.length}
+              aria-expanded={composerMenu === "target"}
+              onClick={() => setComposerMenu((current) => current === "target" ? "" : "target")}
+            >
+              <AgentAvatar className="composer-target-avatar" asset={composerAvatar} decorative={false} />
+              <span>{composerTargetIsBoth ? "Both" : runnerComposerName(selectedRunnerForComposer)}</span>
+              <ChevronDown size={14} />
+            </button>
+            {composerMenu === "target" && (
+              <div className="composer-menu composer-target-menu">
+                <div className="composer-menu-title">Send to</div>
+                {focusRunners.length > 1 && (
+                  <button
+                    className={cx("composer-target-row", composerTargetIsBoth && "selected")}
+                    onMouseDown={(event) => event.preventDefault()}
+                    onClick={() => {
+                      setCommandRunnerId(BOTH_RUNNERS_ID);
+                      setComposerMenu("");
+                    }}
+                  >
+                    <AgentAvatar className="composer-menu-avatar" asset={aiRoomAvatar} />
+                    <span>
+                      <strong>Both</strong>
+                      <small>Send the same message to Claude Code and Codex.</small>
+                    </span>
+                    {composerTargetIsBoth && <Check size={14} />}
+                  </button>
+                )}
+                {runners.map((runner) => {
+                  const avatar = runnerAvatar(runner);
+                  const selected = !composerTargetIsBoth && selectedRunnerForComposer?.id === runner.id;
+                  return (
+                    <button
+                      className={cx("composer-target-row", selected && "selected")}
+                      key={`focus-compose-${runner.id}`}
+                      onMouseDown={(event) => event.preventDefault()}
+                      onClick={() => {
+                        setCommandRunnerId(runner.id);
+                        setComposerMenu("");
+                      }}
+                    >
+                      <AgentAvatar className="composer-menu-avatar" asset={avatar} />
+                      <span>
+                        <strong>{runnerComposerName(runner)}</strong>
+                        <small>{runner.session}</small>
+                      </span>
+                      {selected && <Check size={14} />}
+                    </button>
+                  );
+                })}
+              </div>
+            )}
           </div>
           <div className="composer-input-wrap">
             {showSlashMenu && (
@@ -4307,32 +4607,185 @@ export function App() {
             />
           </div>
           <div className="composer-controls" aria-label="Agent settings">
-            <select
-              value={composerModelValue}
-              disabled={composerSettingsDisabled}
-              aria-label="Model"
-              title={composerTargetIsBoth ? "Pick Claude Code or Codex before changing model." : "Model"}
-              onChange={(event) => void updateRunnerRuntimeConfig(selectedRunnerForComposer, { model: event.target.value })}
-            >
-              {composerModelOptions.map((option) => (
-                <option value={option.value} key={`composer-model-${option.value || "default"}`}>
-                  {option.label}
-                </option>
-              ))}
-            </select>
-            <select
-              value={composerAccessValue}
-              disabled={composerSettingsDisabled}
-              aria-label="Access"
-              title={composerTargetIsBoth ? "Pick Claude Code or Codex before changing access." : "Access"}
-              onChange={(event) => void updateRunnerRuntimeConfig(selectedRunnerForComposer, { accessMode: event.target.value })}
-            >
-              {composerAccessOptions.map((option) => (
-                <option value={option.value} key={`composer-access-${option.value || "default"}`}>
-                  {option.label}
-                </option>
-              ))}
-            </select>
+            {composerTargetIsBoth || !selectedRunnerForComposer ? (
+              <button className="composer-native-trigger both" disabled>
+                <span>Each agent</span>
+              </button>
+            ) : selectedRunnerForComposer.id === "codex-cli" ? (
+              <>
+                <button
+                  className="composer-native-trigger"
+                  disabled={composerSettingsDisabled}
+                  aria-expanded={composerMenu === "codex-settings"}
+                  onClick={() => setComposerMenu((current) => current === "codex-settings" ? "" : "codex-settings")}
+                >
+                  <span>{composerModelLabel.replace("GPT-", "")}</span>
+                  <small>{composerEffortLabel}</small>
+                  <ChevronDown size={13} />
+                </button>
+                <button
+                  className="composer-native-trigger"
+                  disabled={composerSettingsDisabled}
+                  aria-expanded={composerMenu === "codex-access"}
+                  onClick={() => setComposerMenu((current) => current === "codex-access" ? "" : "codex-access")}
+                >
+                  <span>{composerAccessLabel}</span>
+                  <ChevronDown size={13} />
+                </button>
+                {composerMenu === "codex-settings" && (
+                  <div className="composer-menu composer-settings-menu codex-menu">
+                    <div className="composer-menu-title">Codex</div>
+                    <div className="composer-menu-section">
+                      <span>Reasoning</span>
+                      {composerEffortOptions.map((option) => (
+                        <ComposerOptionRow
+                          key={`codex-effort-${option.value}`}
+                          option={option}
+                          selected={composerEffortValue === option.value}
+                          onSelect={() => {
+                            void updateRunnerRuntimeConfig(selectedRunnerForComposer, { reasoningMode: option.value });
+                            setComposerMenu("");
+                          }}
+                        />
+                      ))}
+                    </div>
+                    <div className="composer-menu-section">
+                      <span>Model</span>
+                      {composerModelOptions.map((option) => (
+                        <ComposerOptionRow
+                          key={`codex-model-${option.value || "default"}`}
+                          option={option}
+                          selected={composerModelValue === option.value}
+                          onSelect={() => {
+                            selectComposerModelOption(selectedRunnerForComposer, option);
+                          }}
+                        />
+                      ))}
+                    </div>
+                    <div className="composer-menu-section">
+                      <span>Speed</span>
+                      {composerSpeedOptions.map((option) => (
+                        <ComposerOptionRow
+                          key={`codex-speed-${option.value || "standard"}`}
+                          option={option}
+                          selected={composerSpeedValue === option.value}
+                          onSelect={() => {
+                            void updateRunnerRuntimeConfig(selectedRunnerForComposer, { speedMode: option.value });
+                            setComposerMenu("");
+                          }}
+                        />
+                      ))}
+                    </div>
+                  </div>
+                )}
+                {composerMenu === "codex-access" && (
+                  <div className="composer-menu composer-access-menu">
+                    <div className="composer-menu-title">Codex access</div>
+                    {composerAccessOptions.map((option) => (
+                      <ComposerOptionRow
+                        key={`codex-access-${option.value}`}
+                        option={option}
+                        selected={composerAccessValue === option.value}
+                        onSelect={() => {
+                          void updateRunnerRuntimeConfig(selectedRunnerForComposer, { accessMode: option.value });
+                          setComposerMenu("");
+                        }}
+                      />
+                    ))}
+                  </div>
+                )}
+              </>
+            ) : (
+              <>
+                <button
+                  className="composer-native-trigger"
+                  disabled={composerSettingsDisabled}
+                  aria-expanded={composerMenu === "claude-model"}
+                  onClick={() => setComposerMenu((current) => current === "claude-model" ? "" : "claude-model")}
+                >
+                  <span>{composerModelLabel}</span>
+                  <ChevronDown size={13} />
+                </button>
+                <button
+                  className="composer-native-trigger"
+                  disabled={composerSettingsDisabled}
+                  aria-expanded={composerMenu === "claude-effort"}
+                  onClick={() => setComposerMenu((current) => current === "claude-effort" ? "" : "claude-effort")}
+                >
+                  <span>{composerEffortLabel}</span>
+                  <ChevronDown size={13} />
+                </button>
+                <button
+                  className="composer-native-trigger"
+                  disabled={composerSettingsDisabled}
+                  aria-expanded={composerMenu === "claude-access"}
+                  onClick={() => setComposerMenu((current) => current === "claude-access" ? "" : "claude-access")}
+                >
+                  <span>{composerAccessLabel}</span>
+                  <ChevronDown size={13} />
+                </button>
+                {composerMenu === "claude-model" && (
+                  <div className="composer-menu composer-settings-menu claude-menu">
+                    <div className="composer-menu-title">Models</div>
+                    <button className="composer-menu-row disabled" disabled>
+                      <span>
+                        <strong>Fable 5</strong>
+                        <small>Currently unavailable</small>
+                      </span>
+                    </button>
+                    {composerModelOptions.map((option) => (
+                      <ComposerOptionRow
+                        key={`claude-model-${option.value}`}
+                        option={option}
+                        selected={composerModelValue === option.value}
+                        onSelect={() => {
+                          selectComposerModelOption(selectedRunnerForComposer, option);
+                        }}
+                      />
+                    ))}
+                  </div>
+                )}
+                {composerMenu === "claude-effort" && (
+                  <div className="composer-menu composer-effort-menu">
+                    <div className="composer-menu-title">Effort <strong>{composerEffortLabel}</strong></div>
+                    <div className="effort-track" aria-hidden="true">
+                      <span>Faster</span>
+                      <div className="effort-bar">
+                        <i style={{ width: `${Math.max(18, ((composerEffortOptions.findIndex((option) => option.value === composerEffortValue) + 1) / Math.max(1, composerEffortOptions.length)) * 100)}%` }} />
+                      </div>
+                      <span>Smarter</span>
+                    </div>
+                    {composerEffortOptions.map((option) => (
+                      <ComposerOptionRow
+                        key={`claude-effort-${option.value}`}
+                        option={option}
+                        selected={composerEffortValue === option.value}
+                        onSelect={() => {
+                          void updateRunnerRuntimeConfig(selectedRunnerForComposer, { effortMode: option.value });
+                          setComposerMenu("");
+                        }}
+                      />
+                    ))}
+                  </div>
+                )}
+                {composerMenu === "claude-access" && (
+                  <div className="composer-menu composer-access-menu">
+                    <div className="composer-menu-title">Mode</div>
+                    {composerAccessOptions.map((option) => (
+                      <ComposerOptionRow
+                        key={`claude-access-${option.value}`}
+                        option={option}
+                        selected={composerAccessValue === option.value}
+                        onSelect={() => {
+                          void updateRunnerRuntimeConfig(selectedRunnerForComposer, { accessMode: option.value });
+                          setComposerMenu("");
+                        }}
+                      />
+                    ))}
+                  </div>
+                )}
+              </>
+            )}
           </div>
           <button disabled={!!busyRunner || !composerCanSend || !consoleInput.trim()} onClick={() => void sendConsoleInput()}>
             <Send size={13} />
