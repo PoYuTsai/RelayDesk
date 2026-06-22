@@ -24,7 +24,7 @@
           "tmux": {
             "mode": "wsl",
             "cwd": "/mnt/c/path/to/MyApp",
-            "startCommand": "bash -lc 'cd /mnt/c/path/to/MyApp && codex --no-alt-screen --dangerously-bypass-approvals-and-sandbox -C /mnt/c/path/to/MyApp'",
+            "startCommand": "bash -lc 'cd /mnt/c/path/to/MyApp && codex --model gpt-5.5 --no-alt-screen --dangerously-bypass-approvals-and-sandbox -C /mnt/c/path/to/MyApp'",
             "dismissCodexUpdatePrompt": true
           }
         }

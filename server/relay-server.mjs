@@ -192,6 +192,19 @@ async function editConfig(config, body) {
     return writeLocalConfig(next);
   }
 
+  if (action === "update-runner") {
+    const project = findProject(next, body.projectId);
+    if (!project) throw new Error(`Project not found: ${body.projectId}`);
+    const runner = (project.runners || []).find((item) => item.id === body.runnerId);
+    if (!runner) throw new Error(`Runner not found: ${body.runnerId}`);
+    if (body.model !== undefined) runner.model = String(body.model || "");
+    if (body.accessMode !== undefined) runner.accessMode = String(body.accessMode || "");
+    if (body.tmux && typeof body.tmux === "object") {
+      runner.tmux = { ...(runner.tmux || {}), ...body.tmux };
+    }
+    return writeLocalConfig(next);
+  }
+
   throw new Error(`Unsupported config action: ${action}`);
 }
 
@@ -1646,7 +1659,11 @@ const tmuxKeyMap = new Map([
   ["return", "Enter"],
   ["escape", "Escape"],
   ["esc", "Escape"],
-  ["tab", "Tab"]
+  ["tab", "Tab"],
+  ["backtab", "BTab"],
+  ["shifttab", "BTab"],
+  ["shift+tab", "BTab"],
+  ["btab", "BTab"]
 ]);
 
 async function sendTmuxKeyRunner(project, runner, key) {

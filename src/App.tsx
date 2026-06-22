@@ -46,6 +46,8 @@ type ConfigRunner = {
   name: string;
   kind: string;
   session: string;
+  model?: string;
+  accessMode?: string;
   tmux?: {
     mode?: RunnerMode;
     cwd?: string;
@@ -341,7 +343,7 @@ type RelaySession = {
 };
 
 type SlashRisk = "safe" | "context" | "destructive" | "custom";
-type TmuxKey = "Up" | "Down" | "Left" | "Right" | "Enter" | "Escape" | "Tab";
+type TmuxKey = "Up" | "Down" | "Left" | "Right" | "Enter" | "Escape" | "Tab" | "BTab";
 
 type SlashCommandPreset = {
   id: string;
@@ -354,6 +356,33 @@ type SlashCommandPreset = {
 };
 
 const steps = ["Discuss", "Synthesize", "Build", "Review", "Verify"];
+const BOTH_RUNNERS_ID = "__both";
+
+const modelOptionsByRunner: Record<string, Array<{ label: string; value: string }>> = {
+  "claude-code": [
+    { label: "Opus 4.8", value: "opus" },
+    { label: "Sonnet 4.8", value: "sonnet" }
+  ],
+  "codex-cli": [
+    { label: "GPT-5.5 xHigh", value: "gpt-5.5" },
+    { label: "Default", value: "" }
+  ]
+};
+
+const accessOptionsByRunner: Record<string, Array<{ label: string; value: string }>> = {
+  "claude-code": [
+    { label: "Accept edits", value: "acceptEdits" },
+    { label: "Bypass", value: "bypassPermissions" }
+  ],
+  "codex-cli": [
+    { label: "Read only", value: "read-only" },
+    { label: "Workspace", value: "workspace-write" },
+    { label: "Full access", value: "danger-full-access" }
+  ]
+};
+
+const bothModelOptions = [{ label: "Each agent", value: "" }];
+const bothAccessOptions = [{ label: "Each agent", value: "" }];
 
 const slashCommandPresets: SlashCommandPreset[] = [
   { id: "help", label: "/help", command: "/help", hint: "Show commands available in the selected CLI", risk: "safe", captureDelayMs: 650 },
@@ -1474,6 +1503,11 @@ function shortRunnerName(name: string) {
   return name.replace(/\s+tmux$/i, "").replace(/\s+CLI$/i, "");
 }
 
+function runnerComposerName(runner: Runner | undefined) {
+  if (!runner) return "";
+  return runner.id === "claude-code" ? "Claude Code" : runner.id === "codex-cli" ? "Codex" : shortRunnerName(runner.name);
+}
+
 function findConfigRunner(project: ConfigProject | undefined, runner: Runner) {
   return (project?.runners || []).find((item) => item.id === runner.id || item.session === runner.session);
 }
@@ -1602,7 +1636,7 @@ function runnerDefaults(project: Project | undefined, type: string, mode: Runner
   const withWslShell = (command: string) => `bash -lc ${singleQuote(`cd ${doubleQuote(target)} && ${command}`)}`;
   const codexBinary = codexBinaryPath ? (mode === "wsl" ? toWslPathClient(codexBinaryPath) : codexBinaryPath) : "codex";
   const codexProjectPath = codexBinaryPath && mode === "wsl" ? windowsForwardPath(projectPath) : target;
-  const codexCommand = `${mode === "wsl" ? "export TERM=xterm-256color; " : ""}${doubleQuote(codexBinary)} --no-alt-screen --dangerously-bypass-approvals-and-sandbox -C ${doubleQuote(codexProjectPath || target)}`;
+  const codexCommand = `${mode === "wsl" ? "export TERM=xterm-256color; " : ""}${doubleQuote(codexBinary)} --model gpt-5.5 --no-alt-screen --dangerously-bypass-approvals-and-sandbox -C ${doubleQuote(codexProjectPath || target)}`;
   const claudeCommand = agentPresets.claude.ultraCode.command;
   if (type === "claude-code") {
     return {
@@ -1629,6 +1663,134 @@ function runnerDefaults(project: Project | undefined, type: string, mode: Runner
     cwd,
     startCommand: mode === "wsl" ? withWslShell('echo "configure this runner"') : 'echo "configure this runner"'
   };
+}
+
+function escapeRegExp(value: string) {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+function shellValuePattern() {
+  return `(?:"(?:\\\\.|[^"])*"|'(?:\\\\.|[^'])*'|\\S+)`;
+}
+
+function stripCliOption(command: string, option: string, hasValue: boolean) {
+  const escaped = escapeRegExp(option);
+  const pattern = hasValue
+    ? new RegExp(`(^|\\s)${escaped}(?:=${shellValuePattern()}|\\s+${shellValuePattern()})`, "g")
+    : new RegExp(`(^|\\s)${escaped}\\b`, "g");
+  return command.replace(pattern, "$1").replace(/\s{2,}/g, " ").trim();
+}
+
+function stripCliOptions(command: string, specs: Array<{ option: string; hasValue: boolean }>) {
+  return specs.reduce((current, spec) => stripCliOption(current, spec.option, spec.hasValue), command).trim();
+}
+
+function unquoteShellValue(value = "") {
+  const trimmed = value.trim();
+  if ((trimmed.startsWith('"') && trimmed.endsWith('"')) || (trimmed.startsWith("'") && trimmed.endsWith("'"))) {
+    return trimmed.slice(1, -1);
+  }
+  return trimmed;
+}
+
+function readCliOptionValue(command: string, option: string) {
+  const escaped = escapeRegExp(option);
+  const match = command.match(new RegExp(`(?:^|\\s)${escaped}(?:=(${shellValuePattern()})|\\s+(${shellValuePattern()}))`));
+  return unquoteShellValue(match?.[1] || match?.[2] || "");
+}
+
+function appendShellCommandFlags(command: string, flags: string) {
+  const trimmed = command.trim();
+  const cleanFlags = flags.trim();
+  if (!cleanFlags) return trimmed;
+  const bashMatch = trimmed.match(/^(bash\s+-lc\s+)(['"])([\s\S]*)\2$/);
+  if (bashMatch) {
+    return `${bashMatch[1]}${bashMatch[2]}${bashMatch[3].trim()} ${cleanFlags}${bashMatch[2]}`;
+  }
+  return `${trimmed} ${cleanFlags}`.trim();
+}
+
+function applyRunnerModelToStartCommand(runnerId: string, startCommand: string, model: string) {
+  const clean = stripCliOptions(startCommand, [
+    { option: "--model", hasValue: true },
+    { option: "-m", hasValue: true }
+  ]);
+  if (!model) return clean;
+  return appendShellCommandFlags(clean, `--model ${model}`);
+}
+
+function applyRunnerAccessToStartCommand(runnerId: string, startCommand: string, accessMode: string) {
+  if (runnerId === "claude-code") {
+    const clean = stripCliOptions(startCommand, [
+      { option: "--permission-mode", hasValue: true },
+      { option: "--dangerously-skip-permissions", hasValue: false }
+    ]);
+    if (accessMode === "bypassPermissions") return appendShellCommandFlags(clean, "--dangerously-skip-permissions");
+    if (accessMode === "acceptEdits") return appendShellCommandFlags(clean, "--permission-mode acceptEdits");
+    return clean;
+  }
+
+  if (runnerId === "codex-cli") {
+    const clean = stripCliOptions(startCommand, [
+      { option: "--sandbox", hasValue: true },
+      { option: "-s", hasValue: true },
+      { option: "--ask-for-approval", hasValue: true },
+      { option: "-a", hasValue: true },
+      { option: "--full-auto", hasValue: false },
+      { option: "--dangerously-bypass-approvals-and-sandbox", hasValue: false }
+    ]);
+    if (accessMode === "danger-full-access") return appendShellCommandFlags(clean, "--dangerously-bypass-approvals-and-sandbox");
+    if (accessMode === "workspace-write" || accessMode === "read-only") {
+      return appendShellCommandFlags(clean, `--sandbox ${accessMode} --ask-for-approval on-request`);
+    }
+    return clean;
+  }
+
+  return startCommand;
+}
+
+function commandModelValue(startCommand = "") {
+  return readCliOptionValue(startCommand, "--model") || readCliOptionValue(startCommand, "-m");
+}
+
+function commandAccessValue(runnerId: string, startCommand = "") {
+  if (runnerId === "claude-code") {
+    if (/--dangerously-skip-permissions\b/.test(startCommand)) return "bypassPermissions";
+    return readCliOptionValue(startCommand, "--permission-mode") || "acceptEdits";
+  }
+  if (runnerId === "codex-cli") {
+    if (/--dangerously-bypass-approvals-and-sandbox\b/.test(startCommand)) return "danger-full-access";
+    const sandbox = readCliOptionValue(startCommand, "--sandbox") || readCliOptionValue(startCommand, "-s");
+    if (sandbox === "workspace-write" || sandbox === "read-only") return sandbox;
+    if (/--full-auto\b/.test(startCommand)) return "workspace-write";
+    return "danger-full-access";
+  }
+  return "";
+}
+
+function selectOptionValue(options: Array<{ label: string; value: string }>, value: string, fallback = "") {
+  if (options.some((option) => option.value === value)) return value;
+  return fallback || options[0]?.value || "";
+}
+
+function runnerConfiguredModelValue(runner: Runner | undefined, configRunner: ConfigRunner | undefined) {
+  if (!runner) return "";
+  const options = modelOptionsByRunner[runner.id] || [];
+  if (configRunner && Object.prototype.hasOwnProperty.call(configRunner, "model")) {
+    return selectOptionValue(options, String(configRunner.model || ""));
+  }
+  const parsed = commandModelValue(configRunner?.tmux?.startCommand || "");
+  return selectOptionValue(options, parsed);
+}
+
+function runnerConfiguredAccessValue(runner: Runner | undefined, configRunner: ConfigRunner | undefined) {
+  if (!runner) return "";
+  const options = accessOptionsByRunner[runner.id] || [];
+  if (configRunner && Object.prototype.hasOwnProperty.call(configRunner, "accessMode")) {
+    return selectOptionValue(options, String(configRunner.accessMode || ""));
+  }
+  const parsed = commandAccessValue(runner.id, configRunner?.tmux?.startCommand || "");
+  return selectOptionValue(options, parsed);
 }
 
 function clientId(value: string, fallback = "item") {
@@ -2551,6 +2713,7 @@ export function App() {
 
   useEffect(() => {
     if (!runners.length) return;
+    if (commandRunnerId === BOTH_RUNNERS_ID) return;
     if (commandRunnerId && runners.some((runner) => runner.id === commandRunnerId)) return;
     const preferred = runners.find((runner) => runner.state === "running") || runners[0];
     setCommandRunnerId(preferred.id);
@@ -2863,42 +3026,51 @@ export function App() {
   async function sendConsoleInput(value = consoleInput) {
     const text = value.trim();
     if (!text) return;
+    const targetRunners = commandRunnerId === BOTH_RUNNERS_ID ? focusRunners : commandRunner ? [commandRunner] : [];
     if (text.startsWith("/")) {
+      if (commandRunnerId === BOTH_RUNNERS_ID) {
+        const message = "Pick Claude Code or Codex before sending slash commands.";
+        setLastRunnerOutput(message);
+        return;
+      }
       await sendSlashCommand(text, { source: "console" });
       return;
     }
-    if (!commandRunner) {
+    if (!targetRunners.length) {
       const message = "No runner is configured for this project.";
       replaceConsoleOutput("", message);
       setLastRunnerOutput(message);
       return;
     }
-    if (commandRunner.state !== "running") {
-      const message = `Start ${commandRunner.session} before sending console input.`;
-      replaceConsoleOutput(commandRunner.id, message);
+    const stoppedRunner = targetRunners.find((runner) => runner.state !== "running");
+    if (stoppedRunner) {
+      const message = `Start ${stoppedRunner.session} before sending console input.`;
+      replaceConsoleOutput(stoppedRunner.id, message);
       setLastRunnerOutput(message);
       return;
     }
 
-    setBusyRunner(`${commandRunner.id}:console-send`);
+    setBusyRunner(`${commandRunnerId === BOTH_RUNNERS_ID ? "both" : targetRunners[0].id}:console-send`);
     try {
-      await postRunnerAction(commandRunner, "send", { text });
+      await Promise.all(targetRunners.map((runner) => postRunnerAction(runner, "send", { text })));
       appendBusEvent({
         kind: "message",
         status: "sent",
-        title: `Console message to ${commandRunner.session}`,
+        title: `Console message to ${commandRunnerId === BOTH_RUNNERS_ID ? "Both" : targetRunners[0].session}`,
         summary: text,
-        targetRunnerId: commandRunner.id,
-        targetName: commandRunner.session
+        targetRunnerId: commandRunnerId === BOTH_RUNNERS_ID ? BOTH_RUNNERS_ID : targetRunners[0].id,
+        targetName: commandRunnerId === BOTH_RUNNERS_ID ? "Both" : targetRunners[0].session
       });
       setConsoleInput("");
-      appendConsoleOutput(commandRunner.id, `[RelayDesk sent to ${commandRunner.session}]\n${text}`);
+      targetRunners.forEach((runner) => {
+        appendConsoleOutput(runner.id, `[RelayDesk sent to ${runnerComposerName(runner)}]\n${text}`);
+      });
       await new Promise<void>((resolve) => window.setTimeout(resolve, 650));
-      await captureConsole(commandRunner, { mode: "peek", silent: true });
+      await Promise.all(targetRunners.map((runner) => captureConsole(runner, { mode: "peek", silent: true })));
       await refresh(activeProject);
     } catch (error) {
       const message = `Console send failed: ${String(error)}`;
-      replaceConsoleOutput(commandRunner.id, message, "error");
+      replaceConsoleOutput(targetRunners[0]?.id || "", message, "error");
       setLastRunnerOutput(message);
     } finally {
       setBusyRunner(null);
@@ -3574,8 +3746,10 @@ export function App() {
         setProjectOnboarding(null);
       }
       setLastRunnerOutput(`Config updated: ${body.action}`);
+      return true;
     } catch (error) {
       setLastRunnerOutput(`Config update failed: ${String(error)}`);
+      return false;
     } finally {
       setConfigBusy("");
     }
@@ -3635,6 +3809,63 @@ export function App() {
     await postConfigAction({ action: "delete-runner", projectId: activeProject.id, runnerId: runner.id }, activeProject.id);
   }
 
+  async function updateRunnerRuntimeConfig(runner: Runner | undefined, changes: { model?: string; accessMode?: string }) {
+    if (!activeProject || !runner) return;
+    const configRunner = findConfigRunner(activeConfigProject, runner);
+    if (!configRunner) {
+      const message = `No config found for ${runnerComposerName(runner)}. Add the runner before changing model or access.`;
+      setLastRunnerOutput(message);
+      replaceConsoleOutput(runner.id, message, "error");
+      return;
+    }
+    let startCommand = configRunner.tmux?.startCommand || "";
+    if (!startCommand) {
+      const message = `${runnerComposerName(runner)} has no tmux startCommand to update.`;
+      setLastRunnerOutput(message);
+      replaceConsoleOutput(runner.id, message, "error");
+      return;
+    }
+
+    if (changes.model !== undefined) {
+      startCommand = applyRunnerModelToStartCommand(runner.id, startCommand, changes.model);
+    }
+    if (changes.accessMode !== undefined) {
+      startCommand = applyRunnerAccessToStartCommand(runner.id, startCommand, changes.accessMode);
+    }
+
+    const ok = await postConfigAction(
+      {
+        action: "update-runner",
+        projectId: activeProject.id,
+        runnerId: configRunner.id,
+        ...(changes.model !== undefined ? { model: changes.model } : {}),
+        ...(changes.accessMode !== undefined ? { accessMode: changes.accessMode } : {}),
+        tmux: {
+          ...(configRunner.tmux || {}),
+          startCommand
+        }
+      },
+      activeProject.id
+    );
+    if (!ok) return;
+
+    const modelLabel =
+      changes.model !== undefined
+        ? (modelOptionsByRunner[runner.id] || []).find((option) => option.value === changes.model)?.label || "Default model"
+        : "";
+    const accessLabel =
+      changes.accessMode !== undefined
+        ? (accessOptionsByRunner[runner.id] || []).find((option) => option.value === changes.accessMode)?.label || "Access"
+        : "";
+    const changed = [modelLabel && `model ${modelLabel}`, accessLabel && `access ${accessLabel}`].filter(Boolean).join(" / ");
+    const applyNote =
+      runner.state === "running"
+        ? `Saved ${runnerComposerName(runner)} ${changed}. Restart ${runner.session} to apply, or use the native /model menu for the current live session.`
+        : `Saved ${runnerComposerName(runner)} ${changed}. Start ${runner.session} to apply.`;
+    setLastRunnerOutput(applyNote);
+    appendRunnerPaneOutput(runner.id, `[RelayDesk config]\n${applyNote}`);
+  }
+
   if (bootError) return <div className="loading-shell error">{bootError}</div>;
   if (!projects.length) return <AppShellSkeleton />;
 
@@ -3642,7 +3873,27 @@ export function App() {
   const showFocusConsole = activeStep === "Build";
   const showFocusBus = activeStep === "Synthesize" || activeStep === "Review";
   const showFocusEvidence = activeStep === "Review" || activeStep === "Verify";
-  const selectedRunnerForComposer = commandRunner || focusRunners[0];
+  const composerTargetIsBoth = commandRunnerId === BOTH_RUNNERS_ID;
+  const selectedRunnerForComposer = composerTargetIsBoth ? undefined : commandRunner || focusRunners[0];
+  const composerTargetRunners = composerTargetIsBoth ? focusRunners : selectedRunnerForComposer ? [selectedRunnerForComposer] : [];
+  const composerTargetReady = composerTargetRunners.length > 0 && composerTargetRunners.every((runner) => runner.state === "running");
+  const selectedConfigRunnerForComposer =
+    selectedRunnerForComposer ? findConfigRunner(activeConfigProject, selectedRunnerForComposer) : undefined;
+  const composerModelOptions = composerTargetIsBoth || !selectedRunnerForComposer
+    ? bothModelOptions
+    : modelOptionsByRunner[selectedRunnerForComposer.id] || bothModelOptions;
+  const composerAccessOptions = composerTargetIsBoth || !selectedRunnerForComposer
+    ? bothAccessOptions
+    : accessOptionsByRunner[selectedRunnerForComposer.id] || bothAccessOptions;
+  const composerModelValue = composerTargetIsBoth
+    ? ""
+    : runnerConfiguredModelValue(selectedRunnerForComposer, selectedConfigRunnerForComposer);
+  const composerAccessValue = composerTargetIsBoth
+    ? ""
+    : runnerConfiguredAccessValue(selectedRunnerForComposer, selectedConfigRunnerForComposer);
+  const composerSettingsDisabled = composerTargetIsBoth || !selectedRunnerForComposer || !!configBusy;
+  const composerSlashBlocked = composerTargetIsBoth && consoleInput.trim().startsWith("/");
+  const composerCanSend = composerTargetReady && !composerSlashBlocked;
   const selectedConsoleOutput =
     selectedRunnerForComposer && consoleOutputRunnerId === selectedRunnerForComposer.id
       ? consoleOutput
@@ -3840,7 +4091,7 @@ export function App() {
         <section className="focus-duo-grid">
           {focusRunners.map((runner) => {
             const row = usageByRunner.get(runner.id);
-            const isSelected = selectedRunnerForComposer?.id === runner.id;
+            const isSelected = composerTargetIsBoth || selectedRunnerForComposer?.id === runner.id;
             const isWriter = writerRunner?.id === runner.id;
             const configRunner = findConfigRunner(activeConfigProject, runner);
             const startSummary = runnerStartSummary(configRunner);
@@ -3851,7 +4102,11 @@ export function App() {
             const remote = runnerRemoteStatus(runner, configRunner, paneOutput || runner.lastOutput || "", lang);
             const needsLogin = runnerNeedsLogin(paneOutput || runner.lastOutput || "");
             return (
-              <article className={cx("focus-agent-pane", isSelected && "selected", isWriter && "writer")} key={`focus-agent-${runner.id}`}>
+              <article
+                className={cx("focus-agent-pane", isSelected && "selected", isWriter && "writer")}
+                key={`focus-agent-${runner.id}`}
+                onClick={() => setCommandRunnerId(runner.id)}
+              >
                 <div className="focus-agent-head">
                   <div>
                     <strong>{shortRunnerName(runner.name)}</strong>
@@ -3951,10 +4206,11 @@ export function App() {
         </section>
 
         <section className="focus-composer">
-          <select value={selectedRunnerForComposer?.id || ""} disabled={!runners.length} onChange={(event) => setCommandRunnerId(event.target.value)}>
+          <select value={composerTargetIsBoth ? BOTH_RUNNERS_ID : selectedRunnerForComposer?.id || ""} disabled={!runners.length} onChange={(event) => setCommandRunnerId(event.target.value)}>
+            {focusRunners.length > 1 && <option value={BOTH_RUNNERS_ID}>Both</option>}
             {runners.map((runner) => (
               <option value={runner.id} key={`focus-compose-${runner.id}`}>
-                {runner.session}
+                {runnerComposerName(runner)}
               </option>
             ))}
           </select>
@@ -4020,10 +4276,34 @@ export function App() {
             />
           </div>
           <div className="composer-controls" aria-label="Agent settings">
-            <button type="button">{selectedRunnerForComposer?.id === "codex-cli" ? "GPT-5.5" : "Opus 4.8"}</button>
-            <button type="button">{lang === "zh-TW" ? "完整存取" : "Full access"}</button>
+            <select
+              value={composerModelValue}
+              disabled={composerSettingsDisabled}
+              aria-label="Model"
+              title={composerTargetIsBoth ? "Pick Claude Code or Codex before changing model." : "Model"}
+              onChange={(event) => void updateRunnerRuntimeConfig(selectedRunnerForComposer, { model: event.target.value })}
+            >
+              {composerModelOptions.map((option) => (
+                <option value={option.value} key={`composer-model-${option.value || "default"}`}>
+                  {option.label}
+                </option>
+              ))}
+            </select>
+            <select
+              value={composerAccessValue}
+              disabled={composerSettingsDisabled}
+              aria-label="Access"
+              title={composerTargetIsBoth ? "Pick Claude Code or Codex before changing access." : "Access"}
+              onChange={(event) => void updateRunnerRuntimeConfig(selectedRunnerForComposer, { accessMode: event.target.value })}
+            >
+              {composerAccessOptions.map((option) => (
+                <option value={option.value} key={`composer-access-${option.value || "default"}`}>
+                  {option.label}
+                </option>
+              ))}
+            </select>
           </div>
-          <button disabled={!!busyRunner || selectedRunnerForComposer?.state !== "running" || !consoleInput.trim()} onClick={() => void sendConsoleInput()}>
+          <button disabled={!!busyRunner || !composerCanSend || !consoleInput.trim()} onClick={() => void sendConsoleInput()}>
             <Send size={13} />
             {ui.console.send}
           </button>
