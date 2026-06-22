@@ -76,16 +76,19 @@ button {
 .focus-sidebar,
 .focus-inspector {
   min-height: 0;
-  overflow: auto;
   background: #0f1217;
   padding: 18px;
 }
 
 .focus-sidebar {
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
   border-right: 1px solid var(--line-soft);
 }
 
 .focus-inspector {
+  overflow: auto;
   border-left: 1px solid var(--line-soft);
   display: flex;
   flex-direction: column;
@@ -108,6 +111,24 @@ button {
 
 .focus-side-block {
   margin-top: 18px;
+}
+
+.focus-sidebar-scroll {
+  min-height: 0;
+  flex: 1 1 auto;
+  overflow: auto;
+  padding-right: 2px;
+}
+
+.focus-sidebar-footer {
+  flex: 0 0 auto;
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px solid var(--line-soft);
+}
+
+.focus-sidebar-footer .focus-side-block {
+  margin-top: 12px;
 }
 
 .side-head {
@@ -138,9 +159,10 @@ button {
 }
 
 .thread-row {
+  position: relative;
   min-width: 0;
   display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
+  grid-template-columns: minmax(0, 1fr);
   gap: 4px;
   align-items: center;
   padding: 4px;
@@ -189,14 +211,23 @@ button {
 }
 
 .thread-actions {
+  position: absolute;
+  top: 50%;
+  right: 4px;
+  z-index: 2;
   display: inline-flex;
   gap: 2px;
+  padding: 2px;
+  background: linear-gradient(90deg, rgba(19, 23, 29, 0.8), #13171d 30%);
+  border-radius: 8px;
   opacity: 0;
+  pointer-events: none;
+  transform: translateY(-50%);
 }
 
-.thread-row:hover .thread-actions,
-.thread-row.active .thread-actions {
+.thread-row:hover .thread-actions {
   opacity: 1;
+  pointer-events: auto;
 }
 
 .thread-actions button {
@@ -218,9 +249,9 @@ button {
 
 .focus-session-actions {
   display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 8px;
-  margin-top: 8px;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 6px;
+  margin-top: 0;
 }
 
 .focus-session-actions button,
@@ -241,6 +272,14 @@ button {
   cursor: pointer;
   font-size: 12px;
   font-weight: 800;
+}
+
+.focus-session-actions button {
+  min-width: 0;
+  padding: 0 6px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .focus-session-actions button:disabled,
@@ -928,7 +967,7 @@ button {
 
 .composer-target-row {
   grid-template-columns: 38px minmax(0, 1fr) 18px;
-  min-height: 64px;
+  min-height: 58px;
   margin-top: 4px;
   padding: 9px 10px;
   background: #151b22;
@@ -984,6 +1023,10 @@ button {
   font-size: 11px;
   font-weight: 600;
   text-overflow: ellipsis;
+  white-space: normal;
+}
+
+.composer-target-row small.tmux-label {
   white-space: nowrap;
 }
 
@@ -1361,6 +1404,29 @@ button {
   margin-top: 10px;
 }
 
+.project-thread-groups {
+  display: grid;
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.project-thread-group {
+  border: 1px solid transparent;
+  border-radius: 10px;
+}
+
+.project-thread-group.active {
+  background: rgba(45, 212, 191, 0.07);
+  border-color: rgba(45, 212, 191, 0.16);
+}
+
+.project-group-head {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 30px;
+  gap: 4px;
+  align-items: center;
+}
+
 .project-row {
   width: 100%;
   display: flex;
@@ -1375,6 +1441,14 @@ button {
   cursor: pointer;
 }
 
+.project-group-button {
+  min-width: 0;
+}
+
+.project-group-button span {
+  min-width: 0;
+}
+
 .project-row.active,
 .project-row:hover {
   color: var(--text);
@@ -1382,9 +1456,17 @@ button {
   border-color: var(--line);
 }
 
+.project-thread-group.active .project-row {
+  color: var(--text);
+}
+
 .project-row strong,
 .project-row small {
   display: block;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .project-row small {
@@ -1392,9 +1474,46 @@ button {
   margin-top: 2px;
 }
 
+.project-thread-toggle {
+  width: 28px;
+  height: 28px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--muted);
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 7px;
+  cursor: pointer;
+}
+
+.project-thread-toggle:hover {
+  color: var(--text);
+  background: var(--panel-2);
+  border-color: var(--line);
+}
+
+.project-thread-toggle svg {
+  transition: transform 0.16s ease;
+}
+
+.project-thread-toggle:not(.open) svg {
+  transform: rotate(-90deg);
+}
+
+.project-thread-list {
+  margin: 0 4px 6px 28px;
+  padding-left: 4px;
+  border-left: 1px solid rgba(148, 163, 184, 0.14);
+}
+
+.project-empty-note {
+  padding: 6px 8px;
+}
+
 .runner-mini {
   display: grid;
-  grid-template-columns: auto 1fr auto;
+  grid-template-columns: 30px minmax(0, 1fr);
   align-items: center;
   gap: 8px;
   padding: 8px 0;
@@ -1431,12 +1550,45 @@ button {
   color: var(--faint);
 }
 
+.runner-mini-label {
+  min-width: 0;
+  display: grid;
+  gap: 1px;
+}
+
+.runner-mini-label strong,
+.runner-mini-label small {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.runner-mini-label strong {
+  color: var(--text);
+  font-size: 12px;
+  font-weight: 850;
+}
+
+.runner-mini-label small {
+  font-family: ui-monospace, SFMono-Regular, Consolas, "Liberation Mono", monospace;
+  font-size: 10px;
+}
+
 .runner-mini-meta {
+  grid-column: 2;
   display: inline-flex;
   align-items: center;
-  justify-content: flex-end;
+  justify-content: flex-start;
   gap: 6px;
   min-width: 0;
+}
+
+.runner-mini-meta > small:last-child {
+  max-width: 58px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .runner-dot {

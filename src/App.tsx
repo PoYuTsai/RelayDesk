@@ -2238,11 +2238,13 @@ export function App() {
   const [copiedSessionBrief, setCopiedSessionBrief] = useState(false);
   const [sessionStartedAt] = useState(() => new Date().toISOString());
   const [sessions, setSessions] = useState<RelaySession[]>([]);
+  const [sessionsByProject, setSessionsByProject] = useState<Record<string, RelaySession[]>>({});
   const [activeSessionId, setActiveSessionId] = useState("");
   const [sessionHydrated, setSessionHydrated] = useState(false);
   const [sessionBusy, setSessionBusy] = useState("");
   const [sessionLastSavedAt, setSessionLastSavedAt] = useState("");
   const [showArchivedSessions, setShowArchivedSessions] = useState(false);
+  const [openProjectThreads, setOpenProjectThreads] = useState<Record<string, boolean>>({});
   const [commandRunnerId, setCommandRunnerId] = useState("");
   const [writerRunnerId, setWriterRunnerId] = useState("");
   const [slashCommand, setSlashCommand] = useState("/help");
@@ -2269,6 +2271,7 @@ export function App() {
   const [bootError, setBootError] = useState("");
   const [composerMenu, setComposerMenu] = useState<ComposerMenuId>("");
   const activeProjectIdRef = useRef("");
+  const pendingSessionIdRef = useRef("");
 
   const activeProject = useMemo(
     () => projects.find((project) => project.id === projectId) || projects[0],
@@ -2284,6 +2287,14 @@ export function App() {
     () => sessions.filter((session) => session.status !== "archived" || showArchivedSessions),
     [sessions, showArchivedSessions]
   );
+
+  const visibleSessionsByProject = useMemo(() => {
+    return projects.reduce<Record<string, RelaySession[]>>((map, project) => {
+      const source = project.id === activeProject?.id ? sessions : sessionsByProject[project.id] || [];
+      map[project.id] = source.filter((session) => session.status !== "archived" || showArchivedSessions);
+      return map;
+    }, {});
+  }, [activeProject?.id, projects, sessions, sessionsByProject, showArchivedSessions]);
 
   const activeSession = useMemo(
     () => sessions.find((session) => session.id === activeSessionId),
@@ -2740,12 +2751,27 @@ export function App() {
     return result.session;
   }
 
-  function mergeSession(nextSession: RelaySession) {
-    setSessions((current) =>
-      [nextSession, ...current.filter((session) => session.id !== nextSession.id)].sort((a, b) =>
-        Number(Boolean(b.pinned)) - Number(Boolean(a.pinned)) || String(b.updatedAt || b.createdAt).localeCompare(String(a.updatedAt || a.createdAt))
-      )
+  function sortSessionList(list: RelaySession[]) {
+    return [...list].sort((a, b) =>
+      Number(Boolean(b.pinned)) - Number(Boolean(a.pinned)) || String(b.updatedAt || b.createdAt).localeCompare(String(a.updatedAt || a.createdAt))
     );
+  }
+
+  function replaceProjectSessionList(projectId: string, nextSessions: RelaySession[]) {
+    const sorted = sortSessionList(nextSessions);
+    setSessionsByProject((current) => ({ ...current, [projectId]: sorted }));
+    if (projectId === activeProject?.id) setSessions(sorted);
+  }
+
+  function mergeSession(nextSession: RelaySession) {
+    const mergeInto = (current: RelaySession[]) => sortSessionList([nextSession, ...current.filter((session) => session.id !== nextSession.id)]);
+    setSessions(mergeInto);
+    if (activeProject) {
+      setSessionsByProject((current) => ({
+        ...current,
+        [activeProject.id]: mergeInto(current[activeProject.id] || sessions)
+      }));
+    }
   }
 
   async function saveActiveSession(options: { silent?: boolean } = {}) {
@@ -2816,6 +2842,16 @@ export function App() {
     setSessionHydrated(true);
   }
 
+  async function selectProjectSession(project: Project, session: RelaySession) {
+    if (project.id !== activeProject?.id) {
+      pendingSessionIdRef.current = session.id;
+      setProjectId(project.id);
+      setOpenProjectThreads((current) => ({ ...current, [project.id]: true }));
+      return;
+    }
+    await selectSession(session.id);
+  }
+
   async function archiveSession(session = activeSession) {
     if (!activeProject || !session) return;
     const ok = window.confirm(`Archive "${session.title}"?`);
@@ -2836,11 +2872,12 @@ export function App() {
           title: `${activeProject.name} session`,
           state: emptyNewSessionState()
         });
-        setSessions((current) => [
+        const nextList = [
           replacement,
           archived,
-          ...current.filter((item) => item.id !== session.id && item.id !== archived.id && item.id !== replacement.id)
-        ]);
+          ...sessions.filter((item) => item.id !== session.id && item.id !== archived.id && item.id !== replacement.id)
+        ];
+        replaceProjectSessionList(activeProject.id, nextList);
         setActiveSessionId(replacement.id);
         applySessionState(replacement);
         setSessionLastSavedAt(replacement.updatedAt);
@@ -2860,7 +2897,7 @@ export function App() {
     try {
       await postSessionAction({ action: "delete", sessionId: session.id });
       const remaining = sessions.filter((item) => item.id !== session.id);
-      setSessions(remaining);
+      replaceProjectSessionList(activeProject.id, remaining);
       if (session.id !== activeSessionId) return;
       const nextSession = remaining.find((item) => item.status === "active") || remaining[0];
       if (nextSession) {
@@ -2872,7 +2909,7 @@ export function App() {
           title: `${activeProject.name} session`,
           state: emptyNewSessionState()
         });
-        setSessions([replacement]);
+        replaceProjectSessionList(activeProject.id, [replacement]);
         setActiveSessionId(replacement.id);
         applySessionState(replacement);
         setSessionLastSavedAt(replacement.updatedAt);
@@ -2946,9 +2983,15 @@ export function App() {
         if (!response.ok || result.ok === false || !result.session) throw new Error(result.error || "Session create failed.");
         nextSessions = [result.session];
       }
+      setSessionsByProject((current) => ({ ...current, [project.id]: sortSessionList(nextSessions) }));
       if (activeProjectIdRef.current !== project.id) return;
-      setSessions(nextSessions);
-      const preferred = nextSessions.find((session) => session.status === "active") || nextSessions[0];
+      setSessions(sortSessionList(nextSessions));
+      const pendingId = pendingSessionIdRef.current;
+      const preferred =
+        (pendingId && nextSessions.find((session) => session.id === pendingId)) ||
+        nextSessions.find((session) => session.status === "active") ||
+        nextSessions[0];
+      pendingSessionIdRef.current = "";
       setActiveSessionId(preferred?.id || "");
       if (preferred) applySessionState(preferred);
       setSessionHydrated(true);
@@ -2957,6 +3000,25 @@ export function App() {
     } finally {
       setSessionBusy("");
     }
+  }
+
+  async function loadProjectSessionSummaries(projectList: Project[]) {
+    if (!projectList.length) return;
+    const entries = await Promise.all(
+      projectList.map(async (project) => {
+        try {
+          const data = await getJson<{ projectId: string; sessions: RelaySession[] }>(`/api/sessions?projectId=${encodeURIComponent(project.id)}`);
+          return [project.id, sortSessionList(data.sessions || [])] as const;
+        } catch {
+          return [project.id, [] as RelaySession[]] as const;
+        }
+      })
+    );
+    setSessionsByProject((current) => {
+      const next = { ...current };
+      for (const [id, projectSessions] of entries) next[id] = projectSessions;
+      return next;
+    });
   }
 
   async function refresh(project = activeProject) {
@@ -2997,6 +3059,10 @@ export function App() {
         setProjects(projectData.projects);
         setConfig(configData);
         setProjectId(projectData.projects[0]?.id || "");
+        setOpenProjectThreads(
+          Object.fromEntries(projectData.projects.map((project, index) => [project.id, index === 0])) as Record<string, boolean>
+        );
+        void loadProjectSessionSummaries(projectData.projects);
       })
       .catch((error) => setBootError(String(error)));
   }, []);
@@ -3004,6 +3070,7 @@ export function App() {
   useEffect(() => {
     if (!activeProject) return;
     activeProjectIdRef.current = activeProject.id;
+    setOpenProjectThreads((current) => ({ ...current, [activeProject.id]: true }));
     setGit(null);
     setRunners([]);
     setProjectOnboarding(null);
@@ -4436,58 +4503,87 @@ export function App() {
           </div>
         </div>
 
-        <section className="focus-side-block">
-          <div className="section-label">{ui.sidebar.projects}</div>
-          <div className="project-list">
-            {projects.map((project) => (
-              <button
-                key={project.id}
-                className={cx("project-row", project.id === activeProject?.id && "active")}
-                onClick={() => setProjectId(project.id)}
-              >
-                <FolderGit2 size={16} />
-                <span>
-                  <strong>{project.name}</strong>
-                  <small>{ui.sidebar.runnerCount(project.runnerCount)}</small>
-                </span>
-              </button>
-            ))}
-          </div>
-        </section>
+        <div className="focus-sidebar-scroll">
+          <section className="focus-side-block focus-project-thread-list">
+            <div className="section-label">{ui.sidebar.projects}</div>
+            <div className="project-thread-groups">
+              {projects.map((project) => {
+                const isProjectActive = project.id === activeProject?.id;
+                const projectOpen = openProjectThreads[project.id] ?? isProjectActive;
+                const projectSessions = visibleSessionsByProject[project.id] || [];
+                return (
+                  <div className={cx("project-thread-group", isProjectActive && "active")} key={project.id}>
+                    <div className="project-group-head">
+                      <button
+                        className="project-row project-group-button"
+                        onClick={() => {
+                          setProjectId(project.id);
+                          setOpenProjectThreads((current) => ({ ...current, [project.id]: true }));
+                        }}
+                      >
+                        <FolderGit2 size={16} />
+                        <span>
+                          <strong>{project.name}</strong>
+                          <small>{ui.sidebar.runnerCount(project.runnerCount)}</small>
+                        </span>
+                      </button>
+                      <button
+                        className={cx("project-thread-toggle", projectOpen && "open")}
+                        aria-label={projectOpen ? "Collapse project threads" : "Expand project threads"}
+                        onClick={() => setOpenProjectThreads((current) => ({ ...current, [project.id]: !projectOpen }))}
+                      >
+                        <ChevronDown size={14} />
+                      </button>
+                    </div>
+                    {projectOpen && (
+                      <div className="thread-list project-thread-list" aria-label={`${project.name} ${ui.session.label}`}>
+                        {projectSessions.map((session) => (
+                          <div
+                            className={cx(
+                              "thread-row",
+                              isProjectActive && session.id === activeSessionId && "active",
+                              session.status === "archived" && "archived"
+                            )}
+                            key={`focus-session-${project.id}-${session.id}`}
+                          >
+                            <button className="thread-main" disabled={!!sessionBusy} onClick={() => void selectProjectSession(project, session)}>
+                              <span>{session.pinned && <Pin size={12} />}{session.title}</span>
+                              <small>{session.status === "archived" ? ui.session.archived : formatTime(session.updatedAt)}</small>
+                            </button>
+                            {isProjectActive && (
+                              <div className="thread-actions">
+                                <button disabled={!!sessionBusy} onClick={() => void togglePinSession(session)} title={session.pinned ? "Unpin" : "Pin"}>
+                                  <Pin size={12} />
+                                </button>
+                                <button disabled={!!sessionBusy} onClick={() => void renameSession(session)} title="Rename">
+                                  <Pencil size={12} />
+                                </button>
+                                <button disabled={!!sessionBusy || session.status === "archived"} onClick={() => void archiveSession(session)} title="Archive">
+                                  <Archive size={12} />
+                                </button>
+                                <button disabled={!!sessionBusy} onClick={() => void deleteSession(session)} title="Delete">
+                                  <Trash2 size={12} />
+                                </button>
+                              </div>
+                            )}
+                          </div>
+                        ))}
+                        {!projectSessions.length && <div className="empty-note project-empty-note">{ui.session.noSaved}</div>}
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          </section>
+        </div>
 
-        <section className="focus-side-block focus-session-list">
-          <div className="side-head">
-            <div className="section-label">{ui.session.label}</div>
-            <button disabled={!!sessionBusy} onClick={() => void createSession()} title={ui.session.new}>
-              <Plus size={14} />
-            </button>
-          </div>
-          <div className="thread-list" aria-label={ui.session.label}>
-            {visibleSessions.map((session) => (
-              <div className={cx("thread-row", session.id === activeSessionId && "active", session.status === "archived" && "archived")} key={`focus-session-${session.id}`}>
-                <button className="thread-main" disabled={!!sessionBusy} onClick={() => void selectSession(session.id)}>
-                  <span>{session.pinned && <Pin size={12} />}{session.title}</span>
-                  <small>{session.status === "archived" ? ui.session.archived : formatTime(session.updatedAt)}</small>
-                </button>
-                <div className="thread-actions">
-                  <button disabled={!!sessionBusy} onClick={() => void togglePinSession(session)} title={session.pinned ? "Unpin" : "Pin"}>
-                    <Pin size={12} />
-                  </button>
-                  <button disabled={!!sessionBusy} onClick={() => void renameSession(session)} title="Rename">
-                    <Pencil size={12} />
-                  </button>
-                  <button disabled={!!sessionBusy || session.status === "archived"} onClick={() => void archiveSession(session)} title="Archive">
-                    <Archive size={12} />
-                  </button>
-                  <button disabled={!!sessionBusy} onClick={() => void deleteSession(session)} title="Delete">
-                    <Trash2 size={12} />
-                  </button>
-                </div>
-              </div>
-            ))}
-            {!visibleSessions.length && <div className="empty-note">{ui.session.noSaved}</div>}
-          </div>
+        <div className="focus-sidebar-footer">
           <div className="focus-session-actions">
+            <button disabled={!!sessionBusy} onClick={() => void createSession()} title={ui.session.new}>
+              <Plus size={13} />
+              {ui.session.new}
+            </button>
             <button disabled={!!sessionBusy} onClick={() => setShowArchivedSessions((current) => !current)}>
               <Archive size={13} />
               {showArchivedSessions ? (lang === "zh-TW" ? "隱藏封存" : "Hide archived") : (lang === "zh-TW" ? "顯示封存" : "Show archived")}
@@ -4497,42 +4593,45 @@ export function App() {
               {copiedSessionBrief ? ui.session.copied : ui.session.copyBrief}
             </button>
           </div>
-        </section>
 
-        <section className="focus-side-block">
-          <div className="section-label">{ui.sidebar.runnerHealth}</div>
-          {runners.length ? (
-            runners.map((runner) => {
-              const configRunner = findConfigRunner(activeConfigProject, runner);
-              const livePane = runnerPaneOutputs[runner.id]?.output || runner.lastOutput || "";
-              const remote = runnerRemoteStatus(runner, configRunner, livePane, lang);
-              const avatar = runnerAvatar(runner);
-              return (
-                <div className="runner-mini" key={`focus-runner-${runner.id}`}>
-                  <span className="runner-mini-avatar-wrap">
-                    <AgentAvatar className="runner-mini-avatar" asset={avatar} />
-                    <RunnerDot state={runner.state} />
-                  </span>
-                  <span>{runner.session}</span>
-                  <span className="runner-mini-meta">
-                    {remote && <small className={cx("remote-badge", remote.status)}>{remote.label}</small>}
-                    <small>{runner.state}</small>
-                  </span>
-                </div>
-              );
-            })
-          ) : (
-            <div className="empty-note">{activeProject?.runnerCount ? ui.sidebar.loadingRunners : ui.sidebar.noRunners}</div>
-          )}
-        </section>
+          <section className="focus-side-block risk-box">
+            <ShieldCheck size={16} />
+            <div>
+              <strong>{ui.sidebar.writerPolicy}</strong>
+              <p>{ui.sidebar.writerPolicyDetail}</p>
+            </div>
+          </section>
 
-        <section className="focus-side-block risk-box">
-          <ShieldCheck size={16} />
-          <div>
-            <strong>{ui.sidebar.writerPolicy}</strong>
-            <p>{ui.sidebar.writerPolicyDetail}</p>
-          </div>
-        </section>
+          <section className="focus-side-block runner-health-block">
+            <div className="section-label">{ui.sidebar.runnerHealth}</div>
+            {runners.length ? (
+              runners.map((runner) => {
+                const configRunner = findConfigRunner(activeConfigProject, runner);
+                const livePane = runnerPaneOutputs[runner.id]?.output || runner.lastOutput || "";
+                const remote = runnerRemoteStatus(runner, configRunner, livePane, lang);
+                const avatar = runnerAvatar(runner);
+                return (
+                  <div className="runner-mini" key={`focus-runner-${runner.id}`}>
+                    <span className="runner-mini-avatar-wrap">
+                      <AgentAvatar className="runner-mini-avatar" asset={avatar} />
+                      <RunnerDot state={runner.state} />
+                    </span>
+                    <span className="runner-mini-label">
+                      <strong>{runnerComposerName(runner)}</strong>
+                      <small title={runner.session}>tmux {runner.session}</small>
+                    </span>
+                    <span className="runner-mini-meta">
+                      {remote && <small className={cx("remote-badge", remote.status)}>{remote.label}</small>}
+                      <small>{runner.state}</small>
+                    </span>
+                  </div>
+                );
+              })
+            ) : (
+              <div className="empty-note">{activeProject?.runnerCount ? ui.sidebar.loadingRunners : ui.sidebar.noRunners}</div>
+            )}
+          </section>
+        </div>
       </aside>
 
       <section className="focus-main">
@@ -4739,7 +4838,7 @@ export function App() {
             </button>
             {composerMenu === "target" && (
               <div className="composer-menu composer-target-menu">
-                <div className="composer-menu-title">Send to</div>
+                <div className="composer-menu-title">{lang === "zh-TW" ? "送給" : "Send to"}</div>
                 {focusRunners.length > 1 && (
                   <button
                     className={cx("composer-target-row", composerTargetIsBoth && "selected")}
@@ -4750,10 +4849,10 @@ export function App() {
                     }}
                   >
                     <AgentAvatar className="composer-menu-avatar" asset={aiRoomAvatar} />
-                    <span>
-                      <strong>Both</strong>
-                      <small>Send the same message to Claude Code and Codex.</small>
-                    </span>
+                      <span>
+                        <strong>Both</strong>
+                        <small>{lang === "zh-TW" ? "同步送給兩邊" : "Send to both agents"}</small>
+                      </span>
                     {composerTargetIsBoth && <Check size={14} />}
                   </button>
                 )}
@@ -4773,7 +4872,7 @@ export function App() {
                       <AgentAvatar className="composer-menu-avatar" asset={avatar} />
                       <span>
                         <strong>{runnerComposerName(runner)}</strong>
-                        <small>{runner.session}</small>
+                        <small className="tmux-label">tmux {runner.session}</small>
                       </span>
                       {selected && <Check size={14} />}
                     </button>
