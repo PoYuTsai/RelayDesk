@@ -139,13 +139,11 @@ Install dependencies:
 npm.cmd install
 ```
 
-Copy the example config:
+Create a local config file:
 
 ```powershell
 Copy-Item relay.config.example.json relay.local.json
 ```
-
-Edit `relay.local.json` and set your project paths and runner commands.
 
 Start the API server:
 
@@ -160,6 +158,17 @@ npm.cmd run dev
 ```
 
 Open [http://127.0.0.1:5177](http://127.0.0.1:5177).
+
+On first run, add your project from the setup card:
+
+1. Enter any project name, such as `My App`.
+2. Enter the local project path, such as `C:\Users\you\Desktop\MyApp`.
+3. RelayDesk stores that in `relay.local.json` and derives default tmux session
+   names from the project id, for example `rc-my-app` and `rc-codex-my-app`.
+4. Add a Claude Code, Codex CLI, or custom tmux runner. The default Claude Code
+   runner starts `claude --model opus --effort xhigh`; if you already have a
+   project-specific shell script, paste that script call into the runner start
+   command instead.
 
 Then check the Doctor panel in the right sidebar. It should show whether your
 config, project paths, tmux, Claude Code, and Codex CLI are ready.

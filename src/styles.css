@@ -123,6 +123,7 @@ button {
 .focus-session-actions button,
 .focus-agent-actions button,
 .focus-composer button,
+.focus-setup-card button,
 .focus-decision-compose button {
   height: 32px;
   display: inline-flex;
@@ -141,6 +142,7 @@ button {
 .focus-session-actions button:disabled,
 .focus-agent-actions button:disabled,
 .focus-composer button:disabled,
+.focus-setup-card button:disabled,
 .focus-decision-compose button:disabled {
   cursor: not-allowed;
   opacity: 0.55;
@@ -167,6 +169,65 @@ button {
   border: 1px solid var(--line-soft);
   border-radius: 8px;
   box-shadow: var(--shadow);
+}
+
+.focus-setup-card {
+  flex: 0 0 auto;
+  display: grid;
+  grid-template-columns: minmax(220px, 0.9fr) minmax(360px, 1.2fr);
+  gap: 14px;
+  padding: 14px;
+  border-color: rgba(45, 212, 191, 0.28);
+  background: rgba(45, 212, 191, 0.06);
+}
+
+.focus-setup-card p {
+  max-width: 520px;
+  margin: 7px 0 0;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.focus-setup-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1.25fr) 116px;
+  gap: 8px;
+}
+
+.focus-setup-grid input {
+  min-width: 0;
+  height: 32px;
+  padding: 0 10px;
+  color: var(--text);
+  background: #090c10;
+  border: 1px solid var(--line-soft);
+  border-radius: 7px;
+  outline: none;
+}
+
+.focus-session-preview {
+  grid-column: 2;
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 7px;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.focus-session-preview code {
+  padding: 4px 7px;
+  color: var(--text);
+  background: #090c10;
+  border: 1px solid var(--line-soft);
+  border-radius: 6px;
+  font-family: ui-monospace, SFMono-Regular, Consolas, "Liberation Mono", monospace;
+}
+
+.focus-session-preview em {
+  color: var(--accent-2);
+  font-style: normal;
 }
 
 .focus-task-card {
@@ -228,7 +289,8 @@ button {
 }
 
 .focus-agent-head strong,
-.focus-agent-head span {
+.focus-agent-head span,
+.focus-agent-head small {
   display: block;
 }
 
@@ -240,6 +302,17 @@ button {
   margin-top: 2px;
   color: var(--muted);
   font-size: 12px;
+}
+
+.focus-agent-head small {
+  max-width: 280px;
+  margin-top: 4px;
+  overflow: hidden;
+  color: var(--faint);
+  font-family: ui-monospace, SFMono-Regular, Consolas, "Liberation Mono", monospace;
+  font-size: 11px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .focus-agent-head > div:last-child {
@@ -281,8 +354,13 @@ button {
 .focus-agent-actions {
   flex: 0 0 auto;
   display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-template-columns: repeat(5, minmax(0, 1fr));
   gap: 8px;
+}
+
+.focus-agent-actions .danger-action {
+  color: var(--danger);
+  border-color: rgba(248, 113, 113, 0.24);
 }
 
 .focus-composer {

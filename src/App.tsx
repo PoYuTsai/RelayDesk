@@ -1457,6 +1457,19 @@ function shortRunnerName(name: string) {
   return name.replace(/\s+tmux$/i, "").replace(/\s+CLI$/i, "");
 }
 
+function findConfigRunner(project: ConfigProject | undefined, runner: Runner) {
+  return (project?.runners || []).find((item) => item.id === runner.id || item.session === runner.session);
+}
+
+function runnerStartSummary(runner: ConfigRunner | undefined) {
+  const command = runner?.tmux?.startCommand?.trim() || "";
+  if (!command) return "";
+  const scriptMatch = command.match(/(?:^|\s|["'])(~?\/[^"'\s]*start\.sh|\/mnt\/[^"'\s]*start\.sh)(?:["']|\s|$)/i);
+  if (scriptMatch?.[1]) return scriptMatch[1];
+  const normalized = command.replace(/^bash\s+-lc\s+/, "").replace(/^["']|["']$/g, "");
+  return normalized.length > 92 ? `${normalized.slice(0, 89)}...` : normalized;
+}
+
 function toWslPathClient(path: string) {
   const normalized = path.trim().replace(/\\/g, "/");
   const match = normalized.match(/^([A-Za-z]):\/(.*)$/);
@@ -3283,6 +3296,29 @@ export function App() {
   const showFocusBus = activeStep === "Synthesize" || activeStep === "Review";
   const showFocusEvidence = activeStep === "Review" || activeStep === "Verify";
   const selectedRunnerForComposer = commandRunner || focusRunners[0];
+  const needsFirstProjectSetup = Boolean(config && (config.source.kind !== "local" || !activeProject?.path || looksLikePlaceholderPath(activeProject.path)));
+  const projectIdPreview = clientId(newProjectName.trim() || activeProject?.name || "your-project", "your-project");
+  const firstRun = lang === "zh-TW"
+    ? {
+        label: "第一次設定",
+        title: "先加入你的專案路徑",
+        detail: "RelayDesk 會把專案名稱轉成安全的 project id，再用它產生預設 tmux session；不是寫死 rc-vibesync。",
+        name: "專案名稱，例如 My App",
+        path: "專案路徑，例如 C:\\Users\\you\\Desktop\\MyApp",
+        add: "加入專案",
+        preview: "預設 session",
+        local: "會寫入 relay.local.json"
+      }
+    : {
+        label: "First setup",
+        title: "Add your project path first",
+        detail: "RelayDesk turns the project name into a safe project id, then uses it for default tmux sessions. rc-vibesync is only one local example.",
+        name: "Project name, e.g. My App",
+        path: "Project path, e.g. C:\\Users\\you\\Desktop\\MyApp",
+        add: "Add project",
+        preview: "Default sessions",
+        local: "Writes to relay.local.json"
+      };
 
   return (
     <main className="focus-shell">
@@ -3393,6 +3429,30 @@ export function App() {
           </div>
         </header>
 
+        {needsFirstProjectSetup && (
+          <section className="focus-card focus-setup-card">
+            <div>
+              <div className="section-label">{firstRun.label}</div>
+              <h2>{firstRun.title}</h2>
+              <p>{firstRun.detail}</p>
+            </div>
+            <div className="focus-setup-grid">
+              <input data-onboarding-target="project" value={newProjectName} onChange={(event) => setNewProjectName(event.target.value)} placeholder={firstRun.name} />
+              <input value={newProjectPath} onChange={(event) => setNewProjectPath(event.target.value)} placeholder={firstRun.path} />
+              <button disabled={!!configBusy || !newProjectName.trim() || !newProjectPath.trim()} onClick={() => void addProjectConfig()}>
+                <Plus size={13} />
+                {firstRun.add}
+              </button>
+            </div>
+            <div className="focus-session-preview">
+              <span>{firstRun.preview}</span>
+              <code>Claude: rc-{projectIdPreview}</code>
+              <code>Codex: rc-codex-{projectIdPreview}</code>
+              <em>{firstRun.local}</em>
+            </div>
+          </section>
+        )}
+
         <nav className="focus-stepper" aria-label="Workflow">
           {steps.map((step, index) => (
             <button
@@ -3425,12 +3485,15 @@ export function App() {
             const row = usageByRunner.get(runner.id);
             const isSelected = selectedRunnerForComposer?.id === runner.id;
             const isWriter = writerRunner?.id === runner.id;
+            const configRunner = findConfigRunner(activeConfigProject, runner);
+            const startSummary = runnerStartSummary(configRunner);
             return (
               <article className={cx("focus-agent-pane", isSelected && "selected", isWriter && "writer")} key={`focus-agent-${runner.id}`}>
                 <div className="focus-agent-head">
                   <div>
                     <strong>{shortRunnerName(runner.name)}</strong>
                     <span>{runner.session}</span>
+                    {startSummary && <small>{startSummary}</small>}
                   </div>
                   <div>
                     {isWriter && <em>{ui.trust.writer}</em>}
@@ -3441,9 +3504,13 @@ export function App() {
                   {isSelected ? consoleOutput || ui.console.empty : row ? `${row.lastAction || "idle"} · ${formatTime(row.lastAt)}` : ui.trust.noActivity}
                 </div>
                 <div className="focus-agent-actions">
-                  <button disabled={!!busyRunner || runner.state === "running"} onClick={() => void runRunner(runner, "start")}>
+                  <button disabled={!!busyRunner || runner.state === "running"} onClick={() => void runRunner(runner, "start", { onSuccess: () => setCommandRunnerId(runner.id) })}>
                     <Play size={13} />
                     {ui.console.start}
+                  </button>
+                  <button className="danger-action" disabled={!!busyRunner || runner.state !== "running"} onClick={() => void runRunner(runner, "stop")}>
+                    <Square size={13} />
+                    Kill
                   </button>
                   <button
                     disabled={!!busyRunner || runner.state !== "running"}
