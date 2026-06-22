@@ -329,11 +329,29 @@ function makeDecisionTitle(prompt: string) {
 
 function buildAgentReply(decision: DecisionItem, task: string) {
   return [
-    "可以給對方 agent:",
+    "Relay request for reviewer:",
+    `Source: ${decision.source}`,
+    `Decision: ${decision.title}`,
+    `Question: ${decision.prompt}`,
+    `Current choice: ${decision.selected}`,
+    decision.note ? `Context: ${decision.note}` : "",
+    `Task: ${task}`,
+    "Please challenge this decision before the source agent continues.",
+    "If you disagree, identify the biggest risk and the evidence needed.",
+    "If you agree, give the smallest verification step and call out files or areas that must stay untouched."
+  ]
+    .filter(Boolean)
+    .join("\n");
+}
+
+function buildReturnVerdict(decision: DecisionItem, task: string) {
+  return [
+    "Relay verdict back to source agent:",
+    `Decision: ${decision.title}`,
     `我會選「${decision.selected}」。`,
-    decision.note ? `理由：${decision.note}` : "",
-    `目前 task：${task}`,
-    "請先挑戰這個判斷：如果不同意，列出最大風險；如果同意，給出最小驗證步驟。需要改檔時，先列出會碰到的檔案與風險，再進入 patch。"
+    decision.note ? `Reason / reviewer note: ${decision.note}` : "",
+    `Task: ${task}`,
+    "Continue from this decision. Keep the patch minimal, avoid unrelated files, and stop to ask if the next step would touch a high-risk area."
   ]
     .filter(Boolean)
     .join("\n");
@@ -1493,7 +1511,10 @@ export function App() {
                     <span>Cross-agent reply</span>
                     <div>
                       <button onClick={() => updateDecision(decision.id, { replyDraft: buildAgentReply(decision, task), status: "open" })}>
-                        Build reply
+                        Ask reviewer
+                      </button>
+                      <button onClick={() => updateDecision(decision.id, { replyDraft: buildReturnVerdict(decision, task), status: "open" })}>
+                        Return verdict
                       </button>
                       <button onClick={() => void copyDecisionReply(decision)}>
                         <Copy size={13} />

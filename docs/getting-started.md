@@ -176,8 +176,10 @@ If an agent asks a question:
 1. Click Capture.
 2. RelayDesk may create a decision card automatically.
 3. Choose an option.
-4. Edit the cross-agent reply.
-5. Send it to another runner.
+4. Click Ask reviewer to format the question for the other agent.
+5. Send it to the reviewer runner.
+6. Put the reviewer's conclusion or your decision in the note.
+7. Click Return verdict to format the final decision back to the source agent.
 
 ## 12. Watch local activity
 

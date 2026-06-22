@@ -38,6 +38,8 @@ Example flow:
 - Decision Inbox for agent questions, options, and user decisions.
 - Capture-to-Inbox parsing for numbered questions from terminal agents.
 - Cross-agent reply drafts to send a decision to another runner.
+- Two-way relay draft builders: ask a reviewer to challenge a decision, then
+  return the final verdict to the source agent.
 - Per-runner conversation Snapshot that saves a selected agent window as local
   evidence and creates a review decision.
 - Evidence tray for screenshots, videos, logs, and repro material.
@@ -189,6 +191,17 @@ References:
 Use Capture first when you are not sure the agent is waiting at an input prompt.
 If the agent is still executing, wait until the prompt returns before sending a
 slash command.
+
+## Decision Relay
+
+Each Decision Inbox card has two draft builders:
+
+- `Ask reviewer`: formats the current question, selected answer, task, and risk
+  prompt for the other agent.
+- `Return verdict`: formats the final decision back to the source agent so it can
+  continue with a minimal, scoped next step.
+
+The buttons only prepare text. You still choose which runner receives the relay.
 
 ## Usage / Activity
 
