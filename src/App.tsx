@@ -385,6 +385,61 @@ function evidenceHandoffText(item: Evidence, task: string) {
     .join("\n");
 }
 
+function buildSessionBrief(input: {
+  sessionKey: string;
+  projectName: string;
+  writerName: string;
+  task: string;
+  runners: Runner[];
+  decisions: DecisionItem[];
+  evidence: Evidence[];
+  git: GitContext | null;
+}) {
+  const openDecisions = input.decisions.filter((item) => item.status === "open").length;
+  const sentDecisions = input.decisions.filter((item) => item.status === "sent").length;
+  return [
+    `RelayDesk session: ${input.sessionKey}`,
+    `Project: ${input.projectName}`,
+    `Active writer: ${input.writerName || "unassigned"}`,
+    `Task: ${input.task}`,
+    `Git: ${input.git?.clean ? "clean" : "dirty or unknown"} (${input.git?.branch || "unknown branch"})`,
+    `Runners: ${input.runners.map((runner) => `${runner.name}=${runner.state}`).join(", ") || "none"}`,
+    `Decisions: ${openDecisions} open / ${sentDecisions} sent`,
+    `Evidence: ${input.evidence.length} item${input.evidence.length === 1 ? "" : "s"}`,
+    "",
+    "Use this brief to continue the same local-agent workflow. Verify disk state before trusting any agent claim."
+  ].join("\n");
+}
+
+async function copyTextToClipboard(text: string) {
+  if (navigator.clipboard?.writeText) {
+    try {
+      await navigator.clipboard.writeText(text);
+      return;
+    } catch {
+      // Some localhost and embedded-browser contexts block Clipboard API writes.
+    }
+  }
+
+  const textarea = document.createElement("textarea");
+  textarea.value = text;
+  textarea.setAttribute("readonly", "true");
+  textarea.style.position = "fixed";
+  textarea.style.left = "-9999px";
+  textarea.style.top = "0";
+  textarea.style.opacity = "0";
+  document.body.appendChild(textarea);
+  textarea.focus();
+  textarea.select();
+
+  try {
+    const copied = document.execCommand("copy");
+    if (!copied) throw new Error("Clipboard write is unavailable.");
+  } finally {
+    document.body.removeChild(textarea);
+  }
+}
+
 async function captureDisplayFrame() {
   if (!navigator.mediaDevices?.getDisplayMedia) {
     throw new Error("Screen capture is not available in this browser context.");
@@ -514,6 +569,8 @@ export function App() {
   const [decisionDraft, setDecisionDraft] = useState("");
   const [copiedDecision, setCopiedDecision] = useState("");
   const [copiedSetup, setCopiedSetup] = useState("");
+  const [copiedSessionBrief, setCopiedSessionBrief] = useState(false);
+  const [sessionStartedAt] = useState(() => new Date().toISOString());
   const [commandRunnerId, setCommandRunnerId] = useState("");
   const [writerRunnerId, setWriterRunnerId] = useState("");
   const [slashCommand, setSlashCommand] = useState("/help");
@@ -588,6 +645,18 @@ export function App() {
     if (!activeProject || !selectedEvidence.path) return "";
     return `/api/evidence?projectId=${encodeURIComponent(activeProject.id)}&name=${encodeURIComponent(selectedEvidence.name)}`;
   }, [activeProject?.id, selectedEvidence]);
+
+  const sessionKey = useMemo(() => {
+    const stamp = sessionStartedAt.replace(/[-:T.Z]/g, "").slice(0, 14);
+    return `rd-${activeProject?.id || "project"}-${stamp}`;
+  }, [activeProject?.id, sessionStartedAt]);
+
+  const decisionCounts = useMemo(() => {
+    return {
+      open: decisions.filter((item) => item.status === "open").length,
+      sent: decisions.filter((item) => item.status === "sent").length
+    };
+  }, [decisions]);
 
   const setupRows = useMemo(() => {
     const pathChecks = (doctor?.checks || []).filter((item) => item.id.startsWith("project-"));
@@ -1026,7 +1095,7 @@ export function App() {
   async function copyDecisionReply(decision: DecisionItem) {
     const text = decisionText(decision);
     try {
-      await navigator.clipboard.writeText(text);
+      await copyTextToClipboard(text);
       setCopiedDecision(decision.id);
       window.setTimeout(() => setCopiedDecision((current) => (current === decision.id ? "" : current)), 1400);
     } catch (error) {
@@ -1036,9 +1105,29 @@ export function App() {
 
   async function copySetupCommand(id: string, text: string) {
     try {
-      await navigator.clipboard.writeText(text);
+      await copyTextToClipboard(text);
       setCopiedSetup(id);
       window.setTimeout(() => setCopiedSetup((current) => (current === id ? "" : current)), 1400);
+    } catch (error) {
+      setLastRunnerOutput(`Copy failed: ${String(error)}`);
+    }
+  }
+
+  async function copySessionBrief() {
+    const text = buildSessionBrief({
+      sessionKey,
+      projectName: activeProject?.name || "Unknown project",
+      writerName: writerRunner?.name || "",
+      task,
+      runners,
+      decisions,
+      evidence,
+      git
+    });
+    try {
+      await copyTextToClipboard(text);
+      setCopiedSessionBrief(true);
+      window.setTimeout(() => setCopiedSessionBrief(false), 1400);
     } catch (error) {
       setLastRunnerOutput(`Copy failed: ${String(error)}`);
     }
@@ -1305,6 +1394,32 @@ export function App() {
               );
             })}
           </div>
+        </section>
+
+        <section className="session-registry">
+          <div>
+            <div className="section-label">Session Registry</div>
+            <h2>{sessionKey}</h2>
+            <p>{activeProject?.name} / {writerRunner ? shortRunnerName(writerRunner.name) : "No writer"} / started {formatTime(sessionStartedAt)}</p>
+          </div>
+          <div className="session-registry-stats">
+            <span>
+              <strong>{runners.length}</strong>
+              runners
+            </span>
+            <span>
+              <strong>{decisionCounts.open}</strong>
+              open decisions
+            </span>
+            <span>
+              <strong>{evidence.length}</strong>
+              evidence
+            </span>
+          </div>
+          <button onClick={() => void copySessionBrief()}>
+            <Copy size={13} />
+            {copiedSessionBrief ? "Copied" : "Copy brief"}
+          </button>
         </section>
 
         <nav className="stepper">

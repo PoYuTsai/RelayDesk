@@ -468,14 +468,91 @@ h2 {
   white-space: nowrap;
 }
 
+.session-registry {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  align-items: center;
+  gap: 12px;
+  margin-top: 10px;
+  padding: 12px;
+  background: var(--panel);
+  border: 1px solid var(--line-soft);
+  border-radius: 8px;
+  box-shadow: var(--shadow);
+}
+
+.session-registry h2 {
+  overflow: hidden;
+  font-size: 15px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.session-registry p {
+  margin: 5px 0 0;
+  overflow: hidden;
+  color: var(--muted);
+  font-size: 12px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.session-registry-stats {
+  display: grid;
+  grid-template-columns: repeat(3, auto);
+  gap: 7px;
+}
+
+.session-registry-stats span {
+  min-width: 80px;
+  height: 35px;
+  display: grid;
+  place-items: center;
+  padding: 0 10px;
+  color: var(--muted);
+  background: #0d1015;
+  border: 1px solid var(--line-soft);
+  border-radius: 7px;
+  font-size: 11px;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
+.session-registry-stats strong {
+  color: var(--text);
+  font-size: 13px;
+  line-height: 1;
+}
+
+.session-registry button {
+  height: 33px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  padding: 0 11px;
+  color: var(--text);
+  background: var(--panel-2);
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.session-registry button:hover {
+  border-color: rgba(45, 212, 191, 0.36);
+}
+
 .stepper {
   display: grid;
-  grid-template-columns: repeat(5, 1fr);
+  grid-template-columns: repeat(5, minmax(0, 1fr));
   gap: 8px;
   margin: 16px 0 18px;
 }
 
 .step {
+  min-width: 0;
   display: flex;
   align-items: center;
   gap: 8px;
@@ -1887,10 +1964,15 @@ pre {
 @media (max-width: 900px) {
   .app-shell {
     grid-template-columns: 1fr;
+    max-width: 100vw;
+    overflow-x: hidden;
   }
 
   .sidebar,
   .ops-panel {
+    width: 100%;
+    max-width: 100%;
+    min-width: 0;
     border-left: 0;
     border-right: 0;
   }
@@ -1900,6 +1982,9 @@ pre {
   }
 
   .workspace {
+    width: 100%;
+    max-width: 100%;
+    min-width: 0;
     padding: 16px;
   }
 
@@ -1907,12 +1992,32 @@ pre {
   .agent-lanes,
   .trust-bar,
   .trust-agent-grid,
+  .session-registry,
   .ops-panel {
     grid-template-columns: 1fr;
   }
 
   .trust-agent-grid {
     grid-column: auto;
+  }
+
+  .session-registry-stats {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  .session-registry-stats span {
+    min-width: 0;
+  }
+
+  .stepper {
+    max-width: 100%;
+    grid-template-columns: repeat(5, minmax(74px, 1fr));
+    overflow-x: auto;
+    padding-bottom: 2px;
+  }
+
+  .step {
+    padding: 0 8px;
   }
 
   .topbar,
