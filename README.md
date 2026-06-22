@@ -2,9 +2,9 @@
 
 <p align="center">
   <strong>Language:</strong>
-  <a href="./README.md"><strong>English</strong></a>
+  <a href="#english"><strong>English</strong></a>
   ·
-  <a href="./README.zh-TW.md">繁體中文</a>
+  <a href="#traditional-chinese">繁體中文</a>
 </p>
 
 <p align="center">
@@ -16,8 +16,13 @@
   <a href="./docs/compatibility.md">Compatibility</a>
 </p>
 
-> GitHub renders `README.md` as the repository home by default. The
-> Traditional Chinese README is maintained as a first-class sibling translation.
+> GitHub README pages cannot run a JavaScript language switcher. The language
+> links above stay inside this same README page; a standalone Traditional
+> Chinese file is also kept at [README.zh-TW.md](./README.zh-TW.md).
+
+<a id="english"></a>
+
+## English
 
 RelayDesk is a local cockpit for coordinating native AI coding agents such as
 Claude Code and Codex CLI.
@@ -441,3 +446,70 @@ policies before using it with private code.
 Before publishing a fork or public repo, run the release checklist and verify
 that no local config, logs, screenshots, credentials, or private project paths
 are committed.
+
+---
+
+<a id="traditional-chinese"></a>
+
+## 繁體中文
+
+RelayDesk 是一個本機 agent 工作台，用來協調 Claude Code、Codex CLI 這類原生 AI coding agent。
+
+它不是新的 AI 服務，也不是要取代 Claude、Codex、terminal 或 editor。它做的是把你本來就在用的 agent 放到同一張桌子上：同一個專案、同一個 task、同一份 evidence、同一個決策收件匣，少一點複製貼上。
+
+### 適合誰
+
+如果你常常這樣工作，RelayDesk 就是為你做的：
+
+1. 先跟其中一個 agent 討論想法、規格、TDD 計畫或修 bug 方向。
+2. 把 task、decision、screenshot、log 或 snapshot 送給另一個 agent 補盲點。
+3. 選一邊當本輪 builder，另一邊當 reviewer、challenger 或第二意見。
+4. 當任何一邊問你選項、卡住、或提出不同判斷時，集中到 Decision Inbox。
+5. 你做最後決策，再把 verdict 送回需要繼續工作的 agent。
+
+你可以 Codex-first，也可以 Claude-first。RelayDesk 不預設哪一邊比較適合討論、實作或 review；它只負責把雙向協作、證據和決策整理在同一個本機流程裡。
+
+### RelayDesk 不是什麼
+
+- 不是雲端 AI 服務。
+- 不是 API key proxy。
+- 不負責幫你付費或繞過訂閱。
+- 不取代 Claude Code、Codex CLI、tmux 或你的 editor。
+- 不是把你已經打開的 Codex Desktop 或 Claude Desktop thread 鏡像進來。
+- 不會自動把任何東西部署到雲端。
+
+### Agent runner 怎麼理解
+
+RelayDesk 不是新的模型閘道，而是本機 runner cockpit。
+
+- Claude Code runner：啟動你本機的 Claude Code CLI，放在 terminal/tmux session 裡。適合長時間實作、slash command、上下文輪替、remote-control workflow。
+- Codex CLI runner：啟動 OpenAI 官方 Codex CLI，並由 RelayDesk 幫它管理 tmux session。它不是你已經打開的 Codex Desktop thread，但會使用你本機的 Codex 安裝、登入狀態和 model config。
+- RelayDesk session：保存 task、evidence、decision、runner capture、handoff。它是 workflow layer，不是另一個 AI 模型。
+
+簡單說：RelayDesk 讓原生 Claude Code / Codex CLI 可以在同一個本機流程裡合作，少掉手動複製貼上與截圖搬運。
+
+### 快速開始
+
+```powershell
+npm.cmd install
+Copy-Item relay.config.example.json relay.local.json
+npm.cmd run api
+```
+
+開另一個 terminal：
+
+```powershell
+npm.cmd run dev
+```
+
+打開 [http://127.0.0.1:5177](http://127.0.0.1:5177)。
+
+進去後先看 Setup / Doctor / Project Onboarding。它們會協助你確認：
+
+- project path 是否存在。
+- Git、WSL、tmux 是否可用。
+- Claude Code / Codex CLI 是否找得到。
+- MCP、skills、plugins、prompts 是否能被 RelayDesk 看見。
+- `relay.local.json` 與 `.relaydesk/` 是否被 gitignore 保護。
+
+完整繁中版本仍同步保留在 [README.zh-TW.md](./README.zh-TW.md)，方便直接搜尋與維護翻譯。
