@@ -1722,6 +1722,46 @@ function runnerRemoteStatus(runner: Runner, configRunner: ConfigRunner | undefin
   };
 }
 
+function cleanStatusValue(value = "") {
+  const normalized = value.replace(/\s+/g, " ").trim();
+  if (!normalized || /^N\/A$/i.test(normalized)) return "—";
+  return normalized;
+}
+
+function parseLimitStatus(output: string, pattern: RegExp) {
+  const match = output.match(pattern);
+  if (!match) return { left: "", reset: "" };
+  const rawLeft = cleanStatusValue(match[1] || match[3] || "");
+  return {
+    left: /^\d{1,3}$/.test(rawLeft) ? `${rawLeft}%` : rawLeft,
+    reset: cleanStatusValue(match[2] || match[4] || "")
+  };
+}
+
+function runnerStatusMetrics(output: string, lang: Lang) {
+  const text = output || "";
+  const zh = lang === "zh-TW";
+  const contextLeft =
+    text.match(/(\d{1,3})%\s+context\s+left/i)?.[1] ||
+    text.match(/\bContext\s+(\d{1,3})%/i)?.[1] ||
+    text.match(/[（(](\d{1,3})\s*context[)）]/i)?.[1] ||
+    "";
+  const codexFiveHour = parseLimitStatus(text, /5h limit:\s*[\s\S]*?(\d{1,3})%\s+left(?:\s+\(resets\s+([^)]+)\))?/i);
+  const codexWeekly = parseLimitStatus(text, /Weekly limit:\s*[\s\S]*?(\d{1,3})%\s+left(?:\s+\(resets\s+([^)]+)\))?/i);
+  const claudeFiveHour = parseLimitStatus(text, /5小時額度\s+([^·\n]+?)(?:\s+重置\s+([^·\n]+))?(?=\s*·|\n|$)/i);
+  const claudeWeekly = parseLimitStatus(text, /7天額度\s+([^·\n]+?)(?:\s+重置\s+([^·\n]+))?(?=\s*·|\n|$)/i);
+  const fiveHour = codexFiveHour.left && codexFiveHour.left !== "—" ? codexFiveHour : claudeFiveHour;
+  const weekly = codexWeekly.left && codexWeekly.left !== "—" ? codexWeekly : claudeWeekly;
+  const reset = cleanStatusValue(fiveHour.reset && fiveHour.reset !== "—" ? fiveHour.reset : weekly.reset);
+
+  return [
+    { label: zh ? "上下文" : "Context", value: contextLeft ? `${contextLeft}%` : "—" },
+    { label: "5h", value: fiveHour.left || "—" },
+    { label: "7d", value: weekly.left || "—" },
+    { label: zh ? "重置" : "Reset", value: reset || "—" }
+  ];
+}
+
 function toWslPathClient(path: string) {
   const normalized = path.trim().replace(/\\/g, "/");
   const match = normalized.match(/^([A-Za-z]):\/(.*)$/);
@@ -4389,9 +4429,11 @@ export function App() {
             const runnerConsoleOutput = consoleOutputRunnerId === runner.id ? consoleOutput : "";
             const livePane = runnerPaneOutputs[runner.id];
             const paneOutput = runnerConsoleOutput || livePane?.output || "";
+            const statusOutput = paneOutput || runner.lastOutput || "";
+            const statusMetrics = runnerStatusMetrics(statusOutput, lang);
             const paneHints = runnerOutputHints(paneOutput, lang);
-            const remote = runnerRemoteStatus(runner, configRunner, paneOutput || runner.lastOutput || "", lang);
-            const needsLogin = runnerNeedsLogin(paneOutput || runner.lastOutput || "");
+            const remote = runnerRemoteStatus(runner, configRunner, statusOutput, lang);
+            const needsLogin = runnerNeedsLogin(statusOutput);
             return (
               <article
                 className={cx("focus-agent-pane", isSelected && "selected")}
@@ -4419,6 +4461,14 @@ export function App() {
                     {remote && <span className={cx("remote-badge", remote.status)}>{remote.label}</span>}
                     <RunnerDot state={runner.state} />
                   </div>
+                </div>
+                <div className="agent-usage-strip" title={lang === "zh-TW" ? "從目前 agent 狀態輸出解析；可送 /status 更新。" : "Parsed from the current agent status output; send /status to refresh."}>
+                  {statusMetrics.map((metric) => (
+                    <span key={`${runner.id}-${metric.label}`}>
+                      <small>{metric.label}</small>
+                      <strong>{metric.value}</strong>
+                    </span>
+                  ))}
                 </div>
                 {needsLogin && (
                   <div className="focus-login-guide">

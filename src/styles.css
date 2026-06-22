@@ -435,10 +435,53 @@ button {
   text-transform: uppercase;
 }
 
+.agent-usage-strip {
+  flex: 0 0 auto;
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 6px;
+  margin-top: 10px;
+}
+
+.agent-usage-strip span {
+  min-width: 0;
+  height: 30px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+  padding: 0 8px;
+  color: var(--muted);
+  background: rgba(255, 255, 255, 0.035);
+  border: 1px solid var(--line-soft);
+  border-radius: 7px;
+}
+
+.agent-usage-strip small,
+.agent-usage-strip strong {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.agent-usage-strip small {
+  color: var(--faint);
+  font-size: 10px;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
+.agent-usage-strip strong {
+  color: var(--text);
+  font-size: 12px;
+  font-weight: 850;
+}
+
 .focus-agent-output {
   min-height: 0;
   flex: 1 1 auto;
-  margin: 12px 0;
+  margin: 10px 0;
   padding: 12px;
   overflow: auto;
   color: #dce8f4;
