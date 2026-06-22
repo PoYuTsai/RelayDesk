@@ -1,13 +1,23 @@
 # RelayDesk
 
+<p align="center">
+  <a href="README.md"><strong>English</strong></a>
+  ·
+  <a href="README.zh-TW.md">繁體中文</a>
+  ·
+  <a href="docs/getting-started.md">Getting Started</a>
+  ·
+  <a href="docs/configuration.md">Configuration</a>
+  ·
+  <a href="docs/compatibility.md">Compatibility</a>
+</p>
+
 RelayDesk is a local cockpit for coordinating native AI coding agents such as
 Claude Code and Codex CLI.
 
 It does not replace your agents, subscriptions, terminal, or editor. It gives
 them a shared desk: project context, runner controls, decision handoffs,
 conversation snapshots, evidence files, git state, and setup checks.
-
-Traditional Chinese README: [README.zh-TW.md](README.zh-TW.md)
 
 ## Who This Is For
 
@@ -28,7 +38,24 @@ Example flow:
 - Not an API-key proxy.
 - Not a billing layer.
 - Not a replacement for Claude Code, Codex, tmux, or your editor.
+- Not a mirror of an existing Codex Desktop or Claude Desktop chat thread.
 - Not a cloud orchestrator. The app runs locally on your machine.
+
+## How The Agent Runners Work
+
+RelayDesk is a runner cockpit, not a model gateway.
+
+- Claude Code runner: starts your local Claude Code CLI in a terminal/tmux
+  session. This is a good fit for long-running implementation work, slash
+  commands, context rotation, and remote-control workflows.
+- Codex CLI runner: starts the official OpenAI Codex CLI in a managed tmux
+  session. It is not the same thread as an already-open Codex Desktop chat, but
+  it uses your local Codex installation, login, and model config.
+- RelayDesk session: stores the task, evidence, decisions, runner captures, and
+  handoffs. It is the workflow layer around the agents, not another AI model.
+
+In short: RelayDesk helps native agents work in the same local workflow without
+making you copy text and screenshots between windows.
 
 ## Current MVP
 

@@ -1,10 +1,20 @@
 # RelayDesk
 
+<p align="center">
+  <a href="README.md">English</a>
+  ·
+  <a href="README.zh-TW.md"><strong>繁體中文</strong></a>
+  ·
+  <a href="docs/getting-started.md">Getting Started</a>
+  ·
+  <a href="docs/configuration.md">Configuration</a>
+  ·
+  <a href="docs/compatibility.md">Compatibility</a>
+</p>
+
 RelayDesk 是一個本機 agent 工作台，用來協調 Claude Code、Codex CLI 這類原生 AI coding agent。
 
 它不是新的 AI 服務，也不是要取代 Claude、Codex、terminal 或 editor。它做的是把你本來就在用的 agent 放到同一張桌子上：同一個專案、同一個 task、同一份 evidence、同一個決策收件匣，少一點複製貼上。
-
-English README: [README.md](README.md)
 
 ## 適合誰
 
@@ -26,7 +36,18 @@ RelayDesk 的目標是把這個來回變成：
 - 不是 API key proxy。
 - 不負責幫你付費或繞過訂閱。
 - 不取代 Claude Code、Codex CLI、tmux 或你的 editor。
+- 不是把你已經打開的 Codex Desktop 或 Claude Desktop thread 鏡像進來。
 - 不會自動把任何東西部署到雲端。
+
+## Agent runner 怎麼理解
+
+RelayDesk 不是新的模型閘道，而是本機 runner cockpit。
+
+- Claude Code runner：啟動你本機的 Claude Code CLI，放在 terminal/tmux session 裡。適合長時間實作、slash command、上下文輪替、remote-control workflow。
+- Codex CLI runner：啟動 OpenAI 官方 Codex CLI，並由 RelayDesk 幫它管理 tmux session。它不是你已經打開的 Codex Desktop thread，但會使用你本機的 Codex 安裝、登入狀態和 model config。
+- RelayDesk session：保存 task、evidence、decision、runner capture、handoff。它是 workflow layer，不是另一個 AI 模型。
+
+簡單說：RelayDesk 讓原生 Claude Code / Codex CLI 可以在同一個本機流程裡合作，少掉手動複製貼上與截圖搬運。
 
 ## 目前 MVP
 
@@ -113,6 +134,25 @@ npm.cmd run dev
 - WSL / tmux 是否可用。
 - Claude Code / Codex CLI 是否找得到。
 - `.gitignore` 是否保護本機 config 和 evidence。
+
+Doctor 也會檢查 agent parity。這很重要，因為 PATH 裡的 `codex`、WSL 裡的
+`codex`、以及 Codex Desktop bundled binary 可能是不同版本。如果你想要接近
+Codex Desktop 的品質，請使用 Doctor 標成 `gpt-5.5 capable` 的 binary。
+
+Claude Code runner 也會以 tmux 實際啟動的環境為準。在 Windows + WSL 上，通常
+是 WSL 裡的 `claude`，不是 Windows 的 `claude.cmd`。目前預設 Claude preset 是
+`Claude Opus 4.8 / Ultra Code`，實際命令是：
+
+```bash
+claude --model opus --effort xhigh
+```
+
+Agent model preset 集中放在 `agent-presets.json`。如果 Claude Code 或 Codex CLI
+之後有重大模型或 CLI flag 更新，先改那個檔案，再跑：
+
+```powershell
+npm.cmd run check:presets
+```
 
 ## 基本工作流
 
@@ -271,10 +311,13 @@ WSL tmux runner 範例：
   "tmux": {
     "mode": "wsl",
     "cwd": "/mnt/c/path/to/MyApp",
-    "startCommand": "bash -lc 'cd /mnt/c/path/to/MyApp && claude'"
+    "startCommand": "bash -lc 'cd /mnt/c/path/to/MyApp && claude --model opus --effort xhigh'"
   }
 }
 ```
+
+如果你的 Claude Code build 還不支援 `--effort xhigh`，可以先用 `--effort max`，
+或升級 tmux runner 實際會啟動的 Claude Code CLI。
 
 Codex CLI runner 範例：
 
@@ -292,6 +335,10 @@ Codex CLI runner 範例：
   }
 }
 ```
+
+如果 Doctor 顯示 WSL 或 PATH 上的 Codex CLI 比 Codex Desktop bundled binary 舊，
+請更新該 CLI，或在 runner command 裡明確指向較新的 binary。否則 RelayDesk 上
+的 Codex runner 可能無法達到你預期的 Desktop-quality model access。
 
 Stop / Restart 這類動作會先跳確認，避免誤殺 session。
 
