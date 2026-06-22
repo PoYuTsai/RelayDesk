@@ -14,6 +14,8 @@
   <a href="./docs/configuration.md">Configuration</a>
   ·
   <a href="./docs/compatibility.md">Compatibility</a>
+  |
+  <a href="./docs/agent-workflows.md">Agent Workflows</a>
 </p>
 
 > GitHub README pages cannot run a JavaScript language switcher. The language
@@ -430,6 +432,7 @@ Saved snapshots go under `.relaydesk/evidence/`, which is gitignored.
 - [Configuration](docs/configuration.md)
 - [Docker](docs/docker.md)
 - [Slash Commands](docs/slash-commands.md)
+- [Agent Workflows](docs/agent-workflows.md)
 - [Compatibility](docs/compatibility.md)
 - [Release Checklist](docs/release-checklist.md)
 - [Open Source Roadmap](docs/open-source-roadmap.md)

@@ -207,3 +207,24 @@ Future improvements:
 - Optional redaction mode for public demos or GitHub issues.
 - Send snapshot + OCR + task context to a selected runner.
 - Attach snapshot to the task timeline and final review history.
+
+## 6. Agent thread workflow
+
+The first RelayDesk prototype made tmux runner controls work. The next product
+step is to make agent threads explicit so the UI matches how users actually
+work.
+
+Target shape:
+
+- Keep the left sidebar as the main project/session/thread navigator.
+- Show Claude Code and Codex agent threads under the selected RelayDesk session.
+- Let users create, resume/open, archive, rename, and delete local metadata for
+  agent threads.
+- Treat Claude Code and Codex symmetrically: either one can discuss, build,
+  review, challenge, or receive a verdict.
+- Add a unified composer that can send task text, guidance/interruption text,
+  slash commands, review requests, and decision replies to the selected thread.
+- Keep the native agent as the source of truth. RelayDesk should route and
+  record interactions, not replace Claude Code or Codex CLI.
+
+See [Agent Workflows](agent-workflows.md) for the working product definition.
