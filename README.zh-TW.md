@@ -220,7 +220,9 @@ Session Console 是日常操作 live tmux 的主入口。
 - 按 Capture Pane，把目前 terminal pane 拉進 RelayDesk。
 - 開 Auto refresh，RelayDesk 會每幾秒 peek 一次 pane，但不會算成正式 Capture。
 - 可以送一般文字、task 追問、decision reply，或 CLI slash command。
-- 需要原生 terminal 時，仍可按 Open。
+- 需要原生 terminal 時，按 Enter/Open Terminal。若 `tmux.entryCommand` 有設定，
+  RelayDesk 會跑那個命令，例如 `rc-my-app`；沒有設定時才 fallback 到 attach
+  指定的 tmux session。
 
 送出時會真的打進 tmux session 並按 Enter。送之前先看 pane 狀態，確認 agent 已回到可輸入 prompt。
 

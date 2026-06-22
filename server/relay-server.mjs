@@ -122,6 +122,7 @@ function defaultRunner(project, body) {
   const mode = body.mode === "native" ? "native" : "wsl";
   const cwd = String(body.cwd || project.path || "").trim();
   const startCommand = String(body.startCommand || "").trim();
+  const entryCommand = String(body.entryCommand || "").trim();
   return {
     id,
     name,
@@ -131,6 +132,7 @@ function defaultRunner(project, body) {
       mode,
       cwd,
       startCommand,
+      ...(entryCommand ? { entryCommand } : {}),
       ...(type === "codex-cli" || body.dismissCodexUpdatePrompt ? { dismissCodexUpdatePrompt: true } : {})
     }
   };
@@ -1543,6 +1545,13 @@ function tmuxAttachArgs(runner) {
   return tmuxArgs(runner, ["attach-session", "-t", runner.session]);
 }
 
+function terminalEntryArgs(runner, command) {
+  const mode = runner.tmux?.mode || "wsl";
+  if (mode === "wsl") return ["wsl.exe", "--exec", "bash", "-ic", command];
+  if (process.platform === "win32") return ["cmd.exe", "/d", "/s", "/c", command];
+  return ["bash", "-lc", command];
+}
+
 function runnerCwd(project, runner) {
   return runner.tmux?.hostCwd || project.path || root;
 }
@@ -1608,11 +1617,20 @@ async function dismissStartupPrompts(project, runner) {
 }
 
 async function openTmuxTerminal(project, runner) {
+  const title = `RelayDesk ${project.name} ${runner.session}`;
+  const entryCommand = String(runner.tmux?.entryCommand || "").trim();
+  if (entryCommand) {
+    const entry = terminalEntryArgs(runner, entryCommand);
+    const wtResult = await spawnDetached(["wt.exe", "new-tab", "--title", title, ...entry], runnerCwd(project, runner));
+    if (wtResult.ok) return wtResult;
+    return spawnDetached(["cmd.exe", "/c", "start", title, ...entry], runnerCwd(project, runner));
+  }
+
   const status = await tmuxStatus(project, runner);
   if (status.state !== "running") {
-    return { ok: false, code: -1, stdout: "", stderr: `${runner.session} is not running.` };
+    const started = await startTmuxRunner(project, runner);
+    if (!started.ok) return started;
   }
-  const title = `RelayDesk ${project.name} ${runner.session}`;
   const attach = tmuxAttachArgs(runner);
   const wtResult = await spawnDetached(["wt.exe", "new-tab", "--title", title, ...attach], runnerCwd(project, runner));
   if (wtResult.ok) return wtResult;

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   Activity,
   AlertTriangle,
@@ -48,6 +48,7 @@ type ConfigRunner = {
     mode?: RunnerMode;
     cwd?: string;
     startCommand?: string;
+    entryCommand?: string;
     dismissCodexUpdatePrompt?: boolean;
   };
 };
@@ -317,6 +318,7 @@ type RelaySessionState = {
   writerRunnerId: string;
   commandRunnerId: string;
   consoleOutput: string;
+  consoleOutputRunnerId?: string;
 };
 
 type RelaySession = {
@@ -625,7 +627,7 @@ const uiCopy: Record<
       title: "Live tmux pane",
       capturePane: "Capture Pane",
       autoRefresh: (on) => `Auto refresh ${on ? "on" : "off"}`,
-      open: "Open",
+      open: "Enter",
       start: "Start",
       snapshot: "Snapshot",
       noRunner: "No runner",
@@ -790,7 +792,7 @@ const uiCopy: Record<
       title: "Live tmux 視窗",
       capturePane: "擷取畫面",
       autoRefresh: (on) => `自動刷新 ${on ? "開" : "關"}`,
-      open: "打開",
+      open: "進入",
       start: "啟動",
       snapshot: "截圖",
       noRunner: "沒有 runner",
@@ -1462,8 +1464,9 @@ function findConfigRunner(project: ConfigProject | undefined, runner: Runner) {
 }
 
 function runnerStartSummary(runner: ConfigRunner | undefined) {
-  const command = runner?.tmux?.startCommand?.trim() || "";
+  const command = runner?.tmux?.entryCommand?.trim() || runner?.tmux?.startCommand?.trim() || "";
   if (!command) return "";
+  if (/^rc-[\w.-]+$/i.test(command)) return command;
   const scriptMatch = command.match(/(?:^|\s|["'])(~?\/[^"'\s]*start\.sh|\/mnt\/[^"'\s]*start\.sh)(?:["']|\s|$)/i);
   if (scriptMatch?.[1]) return scriptMatch[1];
   const normalized = command.replace(/^bash\s+-lc\s+/, "").replace(/^["']|["']$/g, "");
@@ -1661,6 +1664,7 @@ export function App() {
   const [slashCommand, setSlashCommand] = useState("/help");
   const [consoleInput, setConsoleInput] = useState("");
   const [consoleOutput, setConsoleOutput] = useState("");
+  const [consoleOutputRunnerId, setConsoleOutputRunnerId] = useState("");
   const [consoleAutoRefresh, setConsoleAutoRefresh] = useState(false);
   const [consoleLastCaptureAt, setConsoleLastCaptureAt] = useState("");
   const [newProjectName, setNewProjectName] = useState("");
@@ -1671,9 +1675,11 @@ export function App() {
   const [runnerSession, setRunnerSession] = useState("");
   const [runnerCwd, setRunnerCwd] = useState("");
   const [runnerStartCommand, setRunnerStartCommand] = useState("");
+  const [runnerEntryCommand, setRunnerEntryCommand] = useState("");
   const [configBusy, setConfigBusy] = useState("");
   const [lang, setLang] = useState<Lang>("zh-TW");
   const [bootError, setBootError] = useState("");
+  const activeProjectIdRef = useRef("");
 
   const activeProject = useMemo(
     () => projects.find((project) => project.id === projectId) || projects[0],
@@ -1757,6 +1763,7 @@ export function App() {
     const session = (runnerSession || runnerPreset.session).trim();
     const cwd = (runnerCwd || runnerPreset.cwd).trim();
     const startCommand = (runnerStartCommand || runnerPreset.startCommand).trim();
+    const entryCommand = runnerEntryCommand.trim();
     const configuredRunners = activeConfigProject?.runners || [];
     const duplicateId = configuredRunners.some((runner) => runner.id === runnerPreset.id);
     const duplicateSession = configuredRunners.some((runner) => runner.session === session);
@@ -1808,6 +1815,7 @@ export function App() {
       readinessCheck,
       session,
       startCommand,
+      entryCommand,
       warnings
     };
   }, [
@@ -1822,6 +1830,7 @@ export function App() {
     runnerPreset.startCommand,
     runnerSession,
     runnerStartCommand,
+    runnerEntryCommand,
     runnerType,
     preferredCodexBinary
   ]);
@@ -2040,8 +2049,19 @@ export function App() {
       selectedEvidenceId,
       writerRunnerId,
       commandRunnerId,
-      consoleOutput
+      consoleOutput,
+      consoleOutputRunnerId
     };
+  }
+
+  function replaceConsoleOutput(runnerId: string, output: string) {
+    setConsoleOutputRunnerId(runnerId);
+    setConsoleOutput(output);
+  }
+
+  function appendConsoleOutput(runnerId: string, output: string) {
+    setConsoleOutputRunnerId(runnerId);
+    setConsoleOutput((current) => `${consoleOutputRunnerId === runnerId && current ? `${current}\n\n` : ""}${output}`);
   }
 
   function titleFromTask(value = task) {
@@ -2059,7 +2079,8 @@ export function App() {
     setSelectedEvidenceId(state.selectedEvidenceId || state.evidence?.[0]?.id || "");
     setWriterRunnerId(state.writerRunnerId || "");
     setCommandRunnerId(state.commandRunnerId || "");
-    setConsoleOutput(state.consoleOutput || "");
+    setConsoleOutputRunnerId(state.consoleOutputRunnerId || "");
+    setConsoleOutput(state.consoleOutputRunnerId ? state.consoleOutput || "" : "");
   }
 
   async function postSessionAction(body: Record<string, unknown>) {
@@ -2113,7 +2134,8 @@ export function App() {
       selectedEvidenceId: "",
       writerRunnerId: writerRunner?.id || "",
       commandRunnerId: commandRunner?.id || "",
-      consoleOutput: ""
+      consoleOutput: "",
+      consoleOutputRunnerId: ""
     };
   }
 
@@ -2237,6 +2259,7 @@ export function App() {
         if (!response.ok || result.ok === false || !result.session) throw new Error(result.error || "Session create failed.");
         nextSessions = [result.session];
       }
+      if (activeProjectIdRef.current !== project.id) return;
       setSessions(nextSessions);
       const preferred = nextSessions.find((session) => session.status === "active") || nextSessions[0];
       setActiveSessionId(preferred?.id || "");
@@ -2259,6 +2282,7 @@ export function App() {
       getJson<UsageContext>("/api/usage"),
       getJson<ConfigContext>("/api/config")
     ]);
+    if (activeProjectIdRef.current !== project.id) return;
     setGit(nextGit);
     setRunners(nextRunners.runners);
     setDoctor(nextDoctor);
@@ -2279,6 +2303,19 @@ export function App() {
 
   useEffect(() => {
     if (!activeProject) return;
+    activeProjectIdRef.current = activeProject.id;
+    setGit(null);
+    setRunners([]);
+    setProjectOnboarding(null);
+    setCommandRunnerId("");
+    setWriterRunnerId("");
+    setConsoleInput("");
+    setConsoleOutput("");
+    setConsoleOutputRunnerId("");
+    setLastRunnerOutput("");
+    setSessions([]);
+    setActiveSessionId("");
+    setSessionHydrated(false);
     void refresh(activeProject);
     void loadSessions(activeProject);
   }, [activeProject?.id]);
@@ -2301,6 +2338,7 @@ export function App() {
     writerRunnerId,
     commandRunnerId,
     consoleOutput,
+    consoleOutputRunnerId,
     sessionHydrated,
     sessionBusy
   ]);
@@ -2419,13 +2457,13 @@ export function App() {
     const mode = options.mode || "capture";
     if (!runner) {
       const message = "No runner is configured for this project.";
-      setConsoleOutput(message);
+      replaceConsoleOutput("", message);
       if (!options.silent) setLastRunnerOutput(message);
       return;
     }
     if (runner.state !== "running") {
       const message = `Start ${runner.session} before reading the live pane.`;
-      setConsoleOutput(message);
+      replaceConsoleOutput(runner.id, message);
       if (!options.silent) setLastRunnerOutput(message);
       return;
     }
@@ -2436,7 +2474,7 @@ export function App() {
     try {
       const result = await postRunnerAction(runner, mode);
       const output = result.output || "Captured an empty tmux pane.";
-      setConsoleOutput(output);
+      replaceConsoleOutput(runner.id, output);
       setConsoleLastCaptureAt(new Date().toLocaleTimeString());
       if (mode === "capture") {
         const capturedDecisionCount = captureDecisions(output, runner);
@@ -2449,7 +2487,7 @@ export function App() {
       }
     } catch (error) {
       const message = `Console ${mode} failed: ${String(error)}`;
-      setConsoleOutput(message);
+      replaceConsoleOutput(runner.id, message);
       if (!options.silent) setLastRunnerOutput(message);
     } finally {
       if (!options.silent) setBusyRunner(null);
@@ -2461,13 +2499,13 @@ export function App() {
     if (!command) return;
     if (!commandRunner) {
       const message = "No runner is configured for this project.";
-      setConsoleOutput(message);
+      replaceConsoleOutput("", message);
       setLastRunnerOutput(message);
       return;
     }
     if (commandRunner.state !== "running") {
       const message = `Start ${commandRunner.session} before sending slash commands.`;
-      setConsoleOutput(message);
+      replaceConsoleOutput(commandRunner.id, message);
       setLastRunnerOutput(message);
       return;
     }
@@ -2501,14 +2539,14 @@ export function App() {
         "",
         `${slashRiskCopy[meta.risk].label}. Auto-peek in ${formatSlashDelay(meta.captureDelayMs)}.`
       ].join("\n");
-      setConsoleOutput((current) => `${current ? `${current}\n\n` : ""}${pendingMessage}`);
+      appendConsoleOutput(commandRunner.id, pendingMessage);
       setLastRunnerOutput(pendingMessage);
       await new Promise<void>((resolve) => window.setTimeout(resolve, meta.captureDelayMs));
       await captureConsole(commandRunner, { mode: "peek", silent: true });
       await refresh(activeProject);
     } catch (error) {
       const message = `Slash command failed: ${String(error)}`;
-      setConsoleOutput(message);
+      replaceConsoleOutput(commandRunner.id, message);
       setLastRunnerOutput(message);
     } finally {
       setBusyRunner(null);
@@ -2524,13 +2562,13 @@ export function App() {
     }
     if (!commandRunner) {
       const message = "No runner is configured for this project.";
-      setConsoleOutput(message);
+      replaceConsoleOutput("", message);
       setLastRunnerOutput(message);
       return;
     }
     if (commandRunner.state !== "running") {
       const message = `Start ${commandRunner.session} before sending console input.`;
-      setConsoleOutput(message);
+      replaceConsoleOutput(commandRunner.id, message);
       setLastRunnerOutput(message);
       return;
     }
@@ -2547,13 +2585,13 @@ export function App() {
         targetName: commandRunner.session
       });
       setConsoleInput("");
-      setConsoleOutput((current) => `${current ? `${current}\n\n` : ""}[RelayDesk sent to ${commandRunner.session}]\n${text}`);
+      appendConsoleOutput(commandRunner.id, `[RelayDesk sent to ${commandRunner.session}]\n${text}`);
       await new Promise<void>((resolve) => window.setTimeout(resolve, 650));
       await captureConsole(commandRunner, { mode: "peek", silent: true });
       await refresh(activeProject);
     } catch (error) {
       const message = `Console send failed: ${String(error)}`;
-      setConsoleOutput(message);
+      replaceConsoleOutput(commandRunner.id, message);
       setLastRunnerOutput(message);
     } finally {
       setBusyRunner(null);
@@ -3043,7 +3081,7 @@ export function App() {
       const note = appendReviewerNote(decision, reviewerRunner, result.output || "");
       const nextDecision = { ...decision, ...patch, note };
       const replyDraft = buildReturnVerdict(nextDecision, task, relayRoute(nextDecision));
-      setConsoleOutput(result.output || "Captured an empty tmux pane.");
+      replaceConsoleOutput(reviewerRunner.id, result.output || "Captured an empty tmux pane.");
       setConsoleLastCaptureAt(new Date().toLocaleTimeString());
       updateDecision(decision.id, {
         ...patch,
@@ -3260,7 +3298,7 @@ export function App() {
   async function addRunnerConfig() {
     if (!activeProject) return;
     if (runnerPreview.blockers.length) return;
-    const { cwd, session, startCommand } = runnerPreview;
+    const { cwd, session, startCommand, entryCommand } = runnerPreview;
     await postConfigAction(
       {
         action: "add-runner",
@@ -3271,6 +3309,7 @@ export function App() {
         session,
         cwd,
         startCommand,
+        entryCommand,
         mode: runnerMode,
         dismissCodexUpdatePrompt: runnerType === "codex-cli"
       },
@@ -3279,6 +3318,7 @@ export function App() {
     setRunnerSession("");
     setRunnerCwd("");
     setRunnerStartCommand("");
+    setRunnerEntryCommand("");
   }
 
   async function deleteRunnerConfig(runner: ConfigRunner) {
@@ -3296,6 +3336,8 @@ export function App() {
   const showFocusBus = activeStep === "Synthesize" || activeStep === "Review";
   const showFocusEvidence = activeStep === "Review" || activeStep === "Verify";
   const selectedRunnerForComposer = commandRunner || focusRunners[0];
+  const selectedConsoleOutput =
+    selectedRunnerForComposer && consoleOutputRunnerId === selectedRunnerForComposer.id ? consoleOutput : "";
   const needsFirstProjectSetup = Boolean(config && (config.source.kind !== "local" || !activeProject?.path || looksLikePlaceholderPath(activeProject.path)));
   const projectIdPreview = clientId(newProjectName.trim() || activeProject?.name || "your-project", "your-project");
   const firstRun = lang === "zh-TW"
@@ -3487,6 +3529,7 @@ export function App() {
             const isWriter = writerRunner?.id === runner.id;
             const configRunner = findConfigRunner(activeConfigProject, runner);
             const startSummary = runnerStartSummary(configRunner);
+            const runnerConsoleOutput = consoleOutputRunnerId === runner.id ? consoleOutput : "";
             return (
               <article className={cx("focus-agent-pane", isSelected && "selected", isWriter && "writer")} key={`focus-agent-${runner.id}`}>
                 <div className="focus-agent-head">
@@ -3501,18 +3544,29 @@ export function App() {
                   </div>
                 </div>
                 <div className="focus-agent-output">
-                  {isSelected ? consoleOutput || ui.console.empty : row ? `${row.lastAction || "idle"} · ${formatTime(row.lastAt)}` : ui.trust.noActivity}
+                  {isSelected ? runnerConsoleOutput || ui.console.empty : row ? `${row.lastAction || "idle"} · ${formatTime(row.lastAt)}` : ui.trust.noActivity}
                 </div>
                 <div className="focus-agent-actions">
-                  <button disabled={!!busyRunner || runner.state === "running"} onClick={() => void runRunner(runner, "start", { onSuccess: () => setCommandRunnerId(runner.id) })}>
+                  <button
+                    aria-label={`${ui.console.start} ${runner.session}`}
+                    title={`${ui.console.start} ${runner.session}`}
+                    disabled={!!busyRunner || runner.state === "running"}
+                    onClick={() => void runRunner(runner, "start", { onSuccess: () => setCommandRunnerId(runner.id) })}
+                  >
                     <Play size={13} />
-                    {ui.console.start}
-                  </button>
-                  <button className="danger-action" disabled={!!busyRunner || runner.state !== "running"} onClick={() => void runRunner(runner, "stop")}>
-                    <Square size={13} />
-                    Kill
                   </button>
                   <button
+                    aria-label={`Kill ${runner.session}`}
+                    title={`Kill ${runner.session}`}
+                    className="danger-action"
+                    disabled={!!busyRunner || runner.state !== "running"}
+                    onClick={() => void runRunner(runner, "stop")}
+                  >
+                    <Square size={13} />
+                  </button>
+                  <button
+                    aria-label={`${ui.console.capturePane} ${runner.session}`}
+                    title={`${ui.console.capturePane} ${runner.session}`}
                     disabled={!!busyRunner || runner.state !== "running"}
                     onClick={() => {
                       setCommandRunnerId(runner.id);
@@ -3520,15 +3574,22 @@ export function App() {
                     }}
                   >
                     <FileDiff size={13} />
-                    {ui.console.capturePane}
                   </button>
-                  <button disabled={!!busyRunner} onClick={() => void snapshotRunner(runner)}>
+                  <button
+                    aria-label={`${ui.console.snapshot} ${runner.session}`}
+                    title={`${ui.console.snapshot} ${runner.session}`}
+                    disabled={!!busyRunner}
+                    onClick={() => void snapshotRunner(runner)}
+                  >
                     <Camera size={13} />
-                    {ui.console.snapshot}
                   </button>
-                  <button disabled={!!busyRunner || runner.state !== "running"} onClick={() => void runRunner(runner, "open")}>
+                  <button
+                    aria-label={`${ui.console.open} ${runner.session}`}
+                    title={`${ui.console.open} ${runner.session}`}
+                    disabled={!!busyRunner}
+                    onClick={() => void runRunner(runner, "open")}
+                  >
                     <Terminal size={13} />
-                    {ui.console.open}
                   </button>
                 </div>
               </article>
@@ -3578,7 +3639,7 @@ export function App() {
                 {ui.console.autoRefresh(consoleAutoRefresh)}
               </button>
             </div>
-            <pre className="focus-console-output">{consoleOutput || ui.console.empty}</pre>
+            <pre className="focus-console-output">{selectedConsoleOutput || ui.console.empty}</pre>
           </section>
         )}
 
@@ -4059,9 +4120,9 @@ export function App() {
                 <RefreshCcw size={13} />
                 Auto refresh {consoleAutoRefresh ? "on" : "off"}
               </button>
-              <button disabled={!!busyRunner || commandRunner?.state !== "running"} onClick={() => commandRunner && void runRunner(commandRunner, "open")}>
+              <button disabled={!!busyRunner || !commandRunner} onClick={() => commandRunner && void runRunner(commandRunner, "open")}>
                 <Terminal size={13} />
-                Open
+                Enter
               </button>
             </div>
           </div>
@@ -4072,7 +4133,7 @@ export function App() {
             </span>
             <span>{consoleLastCaptureAt ? `Last pane read ${consoleLastCaptureAt}` : "No pane read yet"}</span>
           </div>
-          <pre className="console-output">{consoleOutput || "Live tmux output appears here."}</pre>
+          <pre className="console-output">{selectedConsoleOutput || "Live tmux output appears here."}</pre>
           <div className="console-command-bar">
             <input
               value={consoleInput}
@@ -4727,6 +4788,11 @@ export function App() {
               onChange={(event) => setRunnerStartCommand(event.target.value)}
               placeholder={runnerPreset.startCommand}
             />
+            <input
+              value={runnerEntryCommand}
+              onChange={(event) => setRunnerEntryCommand(event.target.value)}
+              placeholder={`Optional terminal entry command, e.g. rc-${activeProject?.id || "my-app"}`}
+            />
             <div className="runner-preview">
               <div>
                 <span>Host path</span>
@@ -4739,6 +4805,10 @@ export function App() {
               <div>
                 <span>Start command</span>
                 <code>{runnerPreview.startCommand || "Not set"}</code>
+              </div>
+              <div>
+                <span>Terminal entry</span>
+                <code>{runnerPreview.entryCommand || "Attach / auto-start fallback"}</code>
               </div>
               <div>
                 <span>Readiness</span>
@@ -4891,9 +4961,9 @@ export function App() {
                     <Send size={13} />
                     Send Task
                   </button>
-                  <button className="wide-action" disabled={!!busyRunner || runner.state !== "running"} onClick={() => void runRunner(runner, "open")}>
+                  <button className="wide-action" disabled={!!busyRunner} onClick={() => void runRunner(runner, "open")}>
                     <Terminal size={13} />
-                    Open Terminal
+                    Enter terminal
                   </button>
                 </div>
               </div>

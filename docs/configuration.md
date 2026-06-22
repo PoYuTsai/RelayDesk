@@ -117,7 +117,8 @@ Fields:
   "tmux": {
     "mode": "wsl",
     "cwd": "/mnt/c/path/to/MyProject",
-    "startCommand": "bash -lc 'cd /mnt/c/path/to/MyProject && claude --model opus --effort xhigh'"
+    "startCommand": "bash -lc 'cd /mnt/c/path/to/MyProject && claude --model opus --effort xhigh'",
+    "entryCommand": "rc-my-project"
   }
 }
 ```
@@ -140,6 +141,9 @@ Fields:
 - `tmux.cwd`: working directory inside tmux.
 - `tmux.hostCwd`: optional host-side cwd for launching commands.
 - `tmux.startCommand`: allowlisted command used by Start/Restart.
+- `tmux.entryCommand`: optional interactive command used by Enter/Open Terminal.
+  Use this when you already have a shell function or alias such as
+  `rc-my-project` that creates or attaches the tmux session for you.
 - `tmux.dismissCodexUpdatePrompt`: optional Codex startup prompt workaround.
 
 `rc-*` is only a convention used by the examples. It is short for
@@ -154,7 +158,8 @@ choice.
 
 The Project Manager form writes these same fields. It recommends `wsl` on
 Windows and `native` elsewhere, then shows the host project path, the tmux cwd
-that will be saved, and the exact start command before you add the runner.
+that will be saved, the exact start command, and the optional terminal entry
+command before you add the runner.
 
 ## Windows + WSL
 

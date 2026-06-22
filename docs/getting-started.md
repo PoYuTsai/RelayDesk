@@ -185,7 +185,14 @@ In Runner Ops:
 
 1. Click Start on Claude Code or Codex CLI.
 2. Click Capture to verify the runner prompt appears.
-3. Click Open Terminal if you want the real tmux session in a terminal window.
+3. Click Enter/Open Terminal if you want the real tmux session in a terminal
+   window.
+
+If your team already has a shell entry command such as `rc-my-app`, put it in
+`tmux.entryCommand`. Enter/Open Terminal will run that command in Windows
+Terminal or a native terminal. If `tmux.entryCommand` is not set, RelayDesk
+falls back to starting the configured tmux session and attaching with
+`tmux attach -t <session>`.
 
 ## 9. Use Session Console
 
@@ -314,7 +321,7 @@ the binary Doctor marks as `gpt-5.5 capable`.
 
 `Start works but Send Task does nothing`
 
-Open Terminal and confirm the agent is at an input prompt.
+Enter/Open Terminal and confirm the agent is at an input prompt.
 
 `Snapshot fails`
 

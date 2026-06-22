@@ -242,7 +242,9 @@ Session Console is the main in-browser surface for live tmux interaction.
   as a formal capture.
 - Send normal text, task follow-ups, decision replies, or slash commands into
   the selected tmux prompt.
-- Open Terminal remains available when you need the native tmux session.
+- Enter/Open Terminal remains available when you need the native tmux session.
+  If `tmux.entryCommand` is set, RelayDesk runs that command, for example
+  `rc-my-app`; otherwise it attaches to the configured tmux session.
 
 Commands are sent to the real tmux session and press Enter. Use the visible pane
 state to confirm the agent is waiting at a prompt before sending input.
