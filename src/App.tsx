@@ -580,7 +580,6 @@ const uiCopy: Record<
     console: {
       label: string;
       title: string;
-      capturePane: string;
       autoRefresh: (on: boolean) => string;
       open: string;
       start: string;
@@ -747,7 +746,6 @@ const uiCopy: Record<
     console: {
       label: "Session Console",
       title: "Live tmux pane",
-      capturePane: "Sync pane",
       autoRefresh: (on) => `Auto refresh ${on ? "on" : "off"}`,
       open: "Open terminal",
       start: "Start agent",
@@ -913,7 +911,6 @@ const uiCopy: Record<
     console: {
       label: "Session Console",
       title: "Live tmux 視窗",
-      capturePane: "同步畫面",
       autoRefresh: (on) => `自動刷新 ${on ? "開" : "關"}`,
       open: "開啟終端機",
       start: "啟動 agent",
@@ -4480,20 +4477,7 @@ export function App() {
                     {ui.console.stop}
                   </button>
                   <button
-                    className="secondary-action"
-                    aria-label={`${ui.console.capturePane} ${runner.session}`}
-                    title={`${ui.console.capturePane} ${runner.session}`}
-                    disabled={!!busyRunner || runner.state !== "running"}
-                    onClick={() => {
-                      setCommandRunnerId(runner.id);
-                      void captureConsole(runner, { mode: "capture" });
-                    }}
-                  >
-                    <FileDiff size={13} />
-                    {ui.console.capturePane}
-                  </button>
-                  <button
-                    className="secondary-action"
+                    className="secondary-action screenshot-action"
                     aria-label={`${ui.console.snapshot} ${runner.session}`}
                     title={`${ui.console.snapshot} ${runner.session}`}
                     disabled={!!busyRunner}
@@ -5301,7 +5285,7 @@ export function App() {
               </select>
               <button disabled={!!busyRunner || commandRunner?.state !== "running"} onClick={() => void captureConsole(commandRunner, { mode: "capture" })}>
                 <FileDiff size={13} />
-                Capture Pane
+                {lang === "zh-TW" ? "讀取 tmux 畫面" : "Read tmux pane"}
               </button>
               <button
                 className={cx(consoleAutoRefresh && "active")}
@@ -6142,11 +6126,11 @@ export function App() {
                   </button>
                   <button disabled={!!busyRunner || runner.state !== "running"} onClick={() => void runRunner(runner, "capture")}>
                     <FileDiff size={13} />
-                    Capture
+                    {lang === "zh-TW" ? "讀取畫面" : "Read pane"}
                   </button>
                   <button disabled={!!busyRunner} onClick={() => void snapshotRunner(runner)}>
                     <Camera size={13} />
-                    Snapshot
+                    {ui.console.snapshot}
                   </button>
                   <button disabled={!!busyRunner || runner.state !== "running"} onClick={() => void runRunner(runner, "send")}>
                     <Send size={13} />

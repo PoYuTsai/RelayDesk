@@ -97,9 +97,9 @@ button {
   min-height: 0;
   display: flex;
   flex-direction: column;
-  gap: 10px;
+  gap: 8px;
   overflow: hidden;
-  padding: 18px;
+  padding: 12px 14px;
 }
 
 .focus-brand {
@@ -253,10 +253,11 @@ button {
 
 .focus-topbar {
   display: flex;
-  align-items: flex-start;
+  align-items: center;
   justify-content: space-between;
-  gap: 16px;
+  gap: 12px;
   flex: 0 0 auto;
+  min-height: 34px;
 }
 
 .focus-card {
@@ -546,6 +547,10 @@ button {
 
 .focus-agent-actions .secondary-action {
   grid-column: span 3;
+}
+
+.focus-agent-actions .screenshot-action {
+  grid-column: span 6;
 }
 
 .focus-agent-actions .enter-action {
@@ -1376,9 +1381,9 @@ h2 {
 }
 
 h1 {
-  margin-top: 2px;
-  font-size: 27px;
-  line-height: 1.15;
+  margin-top: 0;
+  font-size: 25px;
+  line-height: 1.05;
 }
 
 h2 {
@@ -1389,8 +1394,10 @@ h2 {
 
 .status-cluster {
   display: flex;
-  gap: 8px;
+  flex: 0 0 auto;
   align-items: center;
+  gap: 6px;
+  white-space: nowrap;
 }
 
 .status-pill,
@@ -1399,13 +1406,13 @@ h2 {
   display: inline-flex;
   align-items: center;
   gap: 5px;
-  height: 28px;
-  padding: 0 10px;
+  height: 26px;
+  padding: 0 8px;
   color: var(--muted);
   background: var(--panel-2);
   border: 1px solid var(--line);
   border-radius: 7px;
-  font-size: 12px;
+  font-size: 11px;
   font-weight: 700;
 }
 
@@ -2811,7 +2818,7 @@ h2 {
 .language-switch {
   display: inline-flex;
   gap: 4px;
-  padding: 3px;
+  padding: 2px;
   background: #0d1015;
   border: 1px solid var(--line-soft);
   border-radius: 8px;
@@ -2821,13 +2828,13 @@ h2 {
   display: inline-flex;
   align-items: center;
   gap: 5px;
-  height: 25px;
-  padding: 0 8px;
+  height: 22px;
+  padding: 0 7px;
   color: var(--muted);
   background: transparent;
   border-radius: 6px;
   cursor: pointer;
-  font-size: 11px;
+  font-size: 10px;
   font-weight: 800;
 }
 
