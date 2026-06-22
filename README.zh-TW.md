@@ -1,16 +1,22 @@
 # RelayDesk
 
 <p align="center">
-  <a href="README.md">English</a>
+  <strong>Language:</strong>
+  <a href="./README.md">English</a>
   ·
-  <a href="README.zh-TW.md"><strong>繁體中文</strong></a>
-  ·
-  <a href="docs/getting-started.md">Getting Started</a>
-  ·
-  <a href="docs/configuration.md">Configuration</a>
-  ·
-  <a href="docs/compatibility.md">Compatibility</a>
+  <a href="./README.zh-TW.md"><strong>繁體中文</strong></a>
 </p>
+
+<p align="center">
+  <strong>Docs:</strong>
+  <a href="./docs/getting-started.md">Getting Started</a>
+  ·
+  <a href="./docs/configuration.md">Configuration</a>
+  ·
+  <a href="./docs/compatibility.md">Compatibility</a>
+</p>
+
+> GitHub repo 首頁預設渲染 `README.md`。這份繁中 README 是同步維護的完整翻譯版本。
 
 RelayDesk 是一個本機 agent 工作台，用來協調 Claude Code、Codex CLI 這類原生 AI coding agent。
 

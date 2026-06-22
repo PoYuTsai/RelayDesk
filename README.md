@@ -1,16 +1,23 @@
 # RelayDesk
 
 <p align="center">
-  <a href="README.md"><strong>English</strong></a>
+  <strong>Language:</strong>
+  <a href="./README.md"><strong>English</strong></a>
   ·
-  <a href="README.zh-TW.md">繁體中文</a>
-  ·
-  <a href="docs/getting-started.md">Getting Started</a>
-  ·
-  <a href="docs/configuration.md">Configuration</a>
-  ·
-  <a href="docs/compatibility.md">Compatibility</a>
+  <a href="./README.zh-TW.md">繁體中文</a>
 </p>
+
+<p align="center">
+  <strong>Docs:</strong>
+  <a href="./docs/getting-started.md">Getting Started</a>
+  ·
+  <a href="./docs/configuration.md">Configuration</a>
+  ·
+  <a href="./docs/compatibility.md">Compatibility</a>
+</p>
+
+> GitHub renders `README.md` as the repository home by default. The
+> Traditional Chinese README is maintained as a first-class sibling translation.
 
 RelayDesk is a local cockpit for coordinating native AI coding agents such as
 Claude Code and Codex CLI.
