@@ -52,8 +52,8 @@ binary because that is what tmux actually launches. Windows `claude.cmd` is
 still shown as a native candidate, but it should not be used to infer WSL runner
 quality.
 
-The default high-capability preset is labeled `Claude Opus 4.8 / Ultra Code`.
-It maps to:
+The high-capability preset is labeled `Claude Opus 4.8 / Ultra Code`. The plain
+Claude Code TUI command maps to:
 
 ```bash
 claude --model opus --effort xhigh
@@ -62,6 +62,13 @@ claude --model opus --effort xhigh
 Claude Code v2.1.154 or newer is required for Opus 4.8. If `xhigh` is not
 accepted by your installed CLI, use `--effort max` as a fallback until the
 runner's Claude Code is upgraded.
+
+RelayDesk's default Claude runner uses the Remote Control server form instead,
+so Claude Desktop and mobile can show the same local project:
+
+```bash
+claude remote-control --name "My App" --spawn session --permission-mode bypassPermissions
+```
 
 Recommended:
 

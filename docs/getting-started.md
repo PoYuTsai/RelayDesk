@@ -11,7 +11,8 @@ Install:
 - Claude Code CLI and/or Codex CLI.
 - tmux.
 
-On Windows, use WSL for tmux runners:
+On Windows, use WSL for tmux runners. This is the recommended default because
+RelayDesk controls long-running agents through tmux:
 
 ```powershell
 wsl --install
@@ -30,6 +31,19 @@ Then install or verify your agent CLIs inside WSL:
 claude --version
 codex --version
 ```
+
+Authorize Claude Code inside WSL too. A Windows PowerShell login such as
+`claude.cmd auth login` does not authorize the WSL CLI used by RelayDesk:
+
+```bash
+claude auth login --claudeai
+```
+
+The command opens an official Claude authorization page. Click `Authorize`, copy
+the returned code, and paste it back into the WSL prompt.
+
+On macOS or Linux, install `tmux`, `git`, and the agent CLIs natively. Use
+`tmux.mode: "native"` instead of WSL.
 
 ## 2. Install RelayDesk
 
@@ -75,6 +89,16 @@ later from RelayDesk, a terminal, or an official remote-control flow as long as
 the tmux server is still running on your machine. For example, Claude Code
 officially supports `/remote-control` and `/rc`; RelayDesk keeps the same local
 session easy to find and control.
+
+For Claude Code Remote Control, the recommended runner command is:
+
+```bash
+claude remote-control --name "My App" --spawn session --permission-mode bypassPermissions
+```
+
+If authorization expires, RelayDesk will show an Authorize action. That action
+runs `claude auth login --claudeai` in the runner session so you can finish the
+official Claude browser flow and paste the code back.
 
 ## 4. Start RelayDesk
 

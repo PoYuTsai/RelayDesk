@@ -7,6 +7,7 @@
       "effort": "xhigh",
       "fallbackEffort": "max",
       "command": "claude --model opus --effort xhigh",
+      "remoteControlCommand": "claude remote-control --name \"{projectName}\" --spawn session --permission-mode bypassPermissions",
       "minimumVersion": "2.1.154",
       "streamingMode": "stream-json"
     }

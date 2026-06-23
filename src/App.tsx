@@ -1853,6 +1853,81 @@ function runnerRemoteStatus(runner: Runner, configRunner: ConfigRunner | undefin
   };
 }
 
+function runnerNeedsAuthorization(output: string) {
+  return (
+    /Remote Control failed[\s\S]*\/login/i.test(output || "") ||
+    /Invalid authentication credentials/i.test(output || "") ||
+    /Please use [`']?\/login[`']?/i.test(output || "") ||
+    /Select login method:/i.test(output || "")
+  );
+}
+
+function cleanRunnerLoginCopy(lang: Lang) {
+  return lang === "zh-TW"
+    ? {
+        title: "需要授權 Claude Code",
+        detail: "這是目前 WSL/tmux 裡的 Claude Code 授權。請按授權，完成官方 Claude 網頁登入後，再重新連線 Remote。",
+        login: "授權",
+        remote: "重新連線",
+        up: "上",
+        down: "下",
+        enter: "Enter",
+        esc: "Esc"
+      }
+    : {
+        title: "Claude Code authorization required",
+        detail: "Authorize the Claude Code CLI running inside this WSL/tmux session. Finish the official Claude browser flow, then reconnect Remote.",
+        login: "Authorize",
+        remote: "Reconnect",
+        up: "Up",
+        down: "Down",
+        enter: "Enter",
+        esc: "Esc"
+      };
+}
+
+function cleanRunnerRemoteStatus(runner: Runner, configRunner: ConfigRunner | undefined, output: string, lang: Lang) {
+  const configText = JSON.stringify(configRunner?.tmux || {});
+  const wantsRemote =
+    /--remote-control\b/i.test(configText) ||
+    /\bclaude(?:\.cmd)?\s+remote-control\b/i.test(configText) ||
+    /Remote Control/i.test(output || "");
+  if (!wantsRemote) return null;
+  const zh = lang === "zh-TW";
+  if (runnerNeedsAuthorization(output)) {
+    return {
+      status: "fail" as const,
+      label: zh ? "Remote 需授權" : "Remote needs auth"
+    };
+  }
+  if (/Remote Control failed/i.test(output || "")) {
+    return {
+      status: "fail" as const,
+      label: zh ? "Remote 失敗" : "Remote failed"
+    };
+  }
+  if (/Remote Control active|Remote Control v\d|Environment ID:|Continue coding in .*claude\.ai\/code/i.test(output || "")) {
+    return {
+      status: "ok" as const,
+      label: "Remote"
+    };
+  }
+  return {
+    status: "warn" as const,
+    label: runner.state === "running" ? (zh ? "Remote 待確認" : "Remote unverified") : (zh ? "Remote 關閉" : "Remote off")
+  };
+}
+
+function runnerAuthorizationCommand(runner: Runner, configRunner: ConfigRunner | undefined, output: string) {
+  const configText = JSON.stringify(configRunner?.tmux || {});
+  const usesRemoteServer = /\bclaude(?:\.cmd)?\s+remote-control\b/i.test(configText);
+  const remoteServerAuthFailed = /Invalid authentication credentials|Registration: Authentication failed|Please use [`']?\/login[`']?/i.test(
+    output || ""
+  );
+  if (runner.id === "claude-code" && (usesRemoteServer || remoteServerAuthFailed)) return "claude auth login --claudeai";
+  return "/login";
+}
+
 function toWslPathClient(path: string) {
   const normalized = path.trim().replace(/\\/g, "/");
   const match = normalized.match(/^([A-Za-z]):\/(.*)$/);
@@ -1879,6 +1954,7 @@ function singleQuote(value: string) {
 
 function runnerDefaults(project: Project | undefined, type: string, mode: RunnerMode, codexBinaryPath = "") {
   const projectId = project?.id || "project";
+  const projectName = project?.name || projectId;
   const projectPath = project?.path || "";
   const cwd = runnerCwdForMode(projectPath, mode);
   const target = cwd || ".";
@@ -1896,7 +1972,9 @@ function runnerDefaults(project: Project | undefined, type: string, mode: Runner
   const codexCommand = codexUsesWindowsBinary
     ? `/mnt/c/Windows/System32/cmd.exe /d /s /c set TERM=xterm-256color\\&\\& ${doubleQuote(windowsForwardPath(codexBinary))} ${codexArgs}`
     : `${mode === "wsl" ? "export TERM=xterm-256color; " : ""}${doubleQuote(codexBinary)} ${codexArgs}`;
-  const claudeCommand = agentPresets.claude.ultraCode.command;
+  const claudeRemoteTemplate =
+    agentPresets.claude.ultraCode.remoteControlCommand || "claude remote-control --name \"{projectName}\" --spawn session --permission-mode bypassPermissions";
+  const claudeCommand = `unset DISABLE_GROWTHBOOK; ${claudeRemoteTemplate.replace("{projectName}", projectName.replace(/"/g, '\\"'))}`;
   if (type === "claude-code") {
     return {
       id: "claude-code",
@@ -1988,7 +2066,12 @@ function appendShellCommandFlags(command: string, flags: string) {
   return `${trimmed} ${cleanFlags}`.trim();
 }
 
+function isClaudeRemoteControlCommand(command: string) {
+  return /\bclaude(?:\.cmd)?\s+remote-control\b/i.test(command);
+}
+
 function applyRunnerModelToStartCommand(runnerId: string, startCommand: string, model: string) {
+  if (runnerId === "claude-code" && isClaudeRemoteControlCommand(startCommand)) return startCommand;
   const clean = stripCliOptions(startCommand, [
     { option: "--model", hasValue: true },
     { option: "-m", hasValue: true }
@@ -1999,6 +2082,7 @@ function applyRunnerModelToStartCommand(runnerId: string, startCommand: string, 
 
 function applyRunnerEffortToStartCommand(runnerId: string, startCommand: string, effortMode: string) {
   if (runnerId === "claude-code") {
+    if (isClaudeRemoteControlCommand(startCommand)) return startCommand;
     const clean = stripCliOptions(startCommand, [{ option: "--effort", hasValue: true }]);
     if (!effortMode) return clean;
     return appendShellCommandFlags(clean, `--effort ${effortMode}`);
@@ -2024,7 +2108,9 @@ function applyRunnerAccessToStartCommand(runnerId: string, startCommand: string,
       { option: "--permission-mode", hasValue: true },
       { option: "--dangerously-skip-permissions", hasValue: false }
     ]);
-    if (accessMode === "bypassPermissions") return appendShellCommandFlags(clean, "--dangerously-skip-permissions");
+    if (accessMode === "bypassPermissions") {
+      return appendShellCommandFlags(clean, isClaudeRemoteControlCommand(startCommand) ? "--permission-mode bypassPermissions" : "--dangerously-skip-permissions");
+    }
     if (accessMode) return appendShellCommandFlags(clean, `--permission-mode ${accessMode}`);
     return clean;
   }
@@ -2050,6 +2136,7 @@ function applyRunnerAccessToStartCommand(runnerId: string, startCommand: string,
 }
 
 function commandModelValue(startCommand = "") {
+  if (isClaudeRemoteControlCommand(startCommand)) return "opus";
   return readCliOptionValue(startCommand, "--model") || readCliOptionValue(startCommand, "-m");
 }
 
@@ -2071,6 +2158,7 @@ function commandAccessValue(runnerId: string, startCommand = "") {
 }
 
 function commandEffortValue(runnerId: string, startCommand = "") {
+  if (runnerId === "claude-code" && isClaudeRemoteControlCommand(startCommand)) return "max";
   if (runnerId === "claude-code") return readCliOptionValue(startCommand, "--effort") || "max";
   if (runnerId === "codex-cli") return readCodexConfigValue(startCommand, "model_reasoning_effort") || "xhigh";
   return "";
@@ -3249,7 +3337,7 @@ export function App() {
     options: { text?: string; confirmMessage?: string; onSuccess?: () => void; suppressBusEvent?: boolean } = {}
   ) {
     if (!activeProject) return;
-    if (["stop", "restart"].includes(action)) {
+    if (action === "restart") {
       const ok = window.confirm(`${action.toUpperCase()} ${runner.name} (${runner.session})?`);
       if (!ok) return;
     }
@@ -4542,7 +4630,7 @@ export function App() {
         preview: "Default sessions",
         local: "Writes to relay.local.json"
       };
-  const loginCopy = runnerLoginCopy(lang);
+  const loginCopy = cleanRunnerLoginCopy(lang);
   const showSlashMenu = slashCandidates.length > 0 && consoleInput.trim().startsWith("/");
 
   return (
@@ -4745,8 +4833,9 @@ export function App() {
             const paneOutput = runnerConsoleOutput || livePane?.output || "";
             const statusOutput = paneOutput || runner.lastOutput || "";
             const paneHints = runnerOutputHints(paneOutput, lang);
-            const remote = runnerRemoteStatus(runner, configRunner, statusOutput, lang);
-            const needsLogin = runnerNeedsLogin(statusOutput);
+            const remote = cleanRunnerRemoteStatus(runner, configRunner, statusOutput, lang);
+            const needsLogin = runnerNeedsAuthorization(statusOutput);
+            const authorizeCommand = runnerAuthorizationCommand(runner, configRunner, statusOutput);
             const paneText = paneOutput || (runner.state === "running" ? ui.console.empty : row ? `${row.lastAction || "idle"} · ${formatTime(row.lastAt)}` : ui.trust.noActivity);
             const openLabel = runnerOpenLabel(runner, lang);
             return (
@@ -4785,7 +4874,7 @@ export function App() {
                       <span>{loginCopy.detail}</span>
                     </div>
                     <div className="login-guide-actions">
-                      <button disabled={!!busyRunner || runner.state !== "running"} onClick={() => void sendTextToRunner(runner, "/login")}>{loginCopy.login}</button>
+                      <button disabled={!!busyRunner || runner.state !== "running"} onClick={() => void sendTextToRunner(runner, authorizeCommand)}>{loginCopy.login}</button>
                       <button disabled={!!busyRunner || runner.state !== "running"} onClick={() => void sendTextToRunner(runner, "/remote-control")}>{loginCopy.remote}</button>
                       <button disabled={!!busyRunner || runner.state !== "running"} onClick={() => void sendRunnerKey("Up", runner)}>↑ {loginCopy.up}</button>
                       <button disabled={!!busyRunner || runner.state !== "running"} onClick={() => void sendRunnerKey("Down", runner)}>↓ {loginCopy.down}</button>

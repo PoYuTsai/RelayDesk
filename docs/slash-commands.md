@@ -95,20 +95,20 @@ available only on certain Claude plans.
 
 If your Claude Code runner is configured with `tmux.mode: "wsl"`, RelayDesk is
 controlling the Claude Code CLI inside WSL. A successful Windows PowerShell
-login such as `claude.cmd auth login` does not always prove that the WSL tmux
-session has an active Remote Control token.
+login such as `claude.cmd auth login` does not authorize the WSL tmux session.
 
 When the Claude pane shows `Remote Control failed · /login`, use the same live
 pane:
 
-1. Send `/login`.
-2. Choose `1. Claude account with subscription` for Pro, Max, Team, or
-   Enterprise accounts.
-3. Finish the browser authorization.
-4. Send `/remote-control` or `/rc` again.
+1. Run `claude auth login --claudeai` in the WSL runner session.
+2. Open the official Claude authorization URL.
+3. Click `Authorize`.
+4. Copy the returned code and paste it back into the WSL prompt.
+5. Start the Remote Control runner again.
 
-After Claude Code prints `Remote Control active`, Claude Desktop should show the
-Remote project in its Code sidebar.
+After Claude Code prints `Remote Control v...`, `Environment ID`, or a
+`https://claude.ai/code/session_...` URL, Claude Desktop should show the Remote
+project in its Code sidebar.
 
 ## Codex CLI
 

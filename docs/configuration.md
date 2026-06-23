@@ -117,21 +117,24 @@ Fields:
   "tmux": {
     "mode": "wsl",
     "cwd": "/mnt/c/path/to/MyProject",
-    "startCommand": "bash -lc 'cd /mnt/c/path/to/MyProject && claude --model opus --effort xhigh'",
+    "startCommand": "bash -lc 'cd /mnt/c/path/to/MyProject && claude remote-control --name \"My Project\" --spawn session --permission-mode bypassPermissions'",
     "entryCommand": "rc-my-project"
   }
 }
 ```
 
-RelayDesk labels this preset as `Claude Opus 4.8 / Ultra Code`. The label is a
-RelayDesk preset; the actual Claude Code command is:
+RelayDesk labels this preset as `Claude Opus 4.8 / Ultra Code` because the
+spawned Claude Code session can still use your Claude Code subscription and
+desktop/mobile Remote Control surface. The recommended Remote Control server
+command is:
 
 ```bash
-claude --model opus --effort xhigh
+claude remote-control --name "My Project" --spawn session --permission-mode bypassPermissions
 ```
 
-If your local Claude Code does not support `xhigh`, use `--effort max` or
-upgrade the CLI used by the tmux runner.
+If you prefer a plain local Claude Code TUI instead of Remote Control, you can
+use a command such as `claude --model opus --effort max`, but Claude Desktop
+will not show it as a Remote project until Remote Control is enabled.
 
 Fields:
 
@@ -160,6 +163,11 @@ The Project Manager form writes these same fields. It recommends `wsl` on
 Windows and `native` elsewhere, then shows the host project path, the tmux cwd
 that will be saved, the exact start command, and the optional terminal entry
 command before you add the runner.
+
+On Windows, Claude Code authorization must be completed inside the same WSL
+environment that RelayDesk uses. If Remote Control returns 401 or asks for
+`/login`, run `claude auth login --claudeai` inside WSL, click Authorize on the
+official Claude page, and paste the returned code into the prompt.
 
 ## Windows + WSL
 

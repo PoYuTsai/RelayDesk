@@ -114,6 +114,17 @@ Minimum:
 
 For terminal runner workflows:
 
+- Windows: WSL + Ubuntu + tmux is the recommended default. RelayDesk starts the
+  agent inside WSL, so Claude Code Remote Control authorization must also be
+  completed inside that WSL CLI.
+- macOS/Linux: use native tmux. No WSL layer is needed.
+
+First run is intentionally simple: pick a project path, run Doctor, authorize
+the local CLIs when asked, then press the runner button. If Claude Code Remote
+Control needs auth, RelayDesk should lead you to the official Claude authorize
+page; after you click Authorize, paste the returned code back into the tmux
+prompt.
+
 - `tmux`.
 - Claude Code CLI and/or Codex CLI.
 - Valid auth/subscription/API access for the agents you use.
@@ -170,9 +181,9 @@ On first run, add your project from the setup card:
 3. RelayDesk stores that in `relay.local.json` and derives default tmux session
    names from the project id, for example `rc-my-app` and `rc-codex-my-app`.
 4. Add a Claude Code, Codex CLI, or custom tmux runner. The default Claude Code
-   runner starts `claude --model opus --effort xhigh`; if you already have a
-   project-specific shell script, paste that script call into the runner start
-   command instead.
+   runner starts `claude remote-control --name "My App" --spawn session`; if
+   you already have a project-specific shell script, paste that script call into
+   the runner start command instead.
 
 Then check the Doctor panel in the right sidebar. It should show whether your
 config, project paths, tmux, Claude Code, and Codex CLI are ready.
@@ -185,7 +196,8 @@ closest Codex Desktop parity.
 For Claude Code runners, Doctor prefers the same environment that tmux will
 launch. On Windows + WSL this usually means WSL `claude`, not Windows
 `claude.cmd`. The default Claude preset is `Claude Opus 4.8 / Ultra Code`,
-implemented as `claude --model opus --effort xhigh`.
+implemented through Claude Code Remote Control so Claude Desktop and mobile can
+show the same local project.
 
 Agent model presets live in `agent-presets.json`. When Claude Code or Codex CLI
 ships a major model or flag change, update that file first and run
@@ -386,13 +398,14 @@ Recommended WSL tmux runner:
   "tmux": {
     "mode": "wsl",
     "cwd": "/mnt/c/path/to/MyApp",
-    "startCommand": "bash -lc 'cd /mnt/c/path/to/MyApp && claude --model opus --effort xhigh'"
+    "startCommand": "bash -lc 'cd /mnt/c/path/to/MyApp && claude remote-control --name \"My App\" --spawn session --permission-mode bypassPermissions'"
   }
 }
 ```
 
-If your Claude Code build does not accept `--effort xhigh`, use `--effort max`
-until you upgrade the CLI used by the tmux runner.
+If you prefer a plain Claude Code TUI instead of Remote Control, use a command
+such as `claude --model opus --effort max`; Claude Desktop will not show that
+plain TUI session as a Remote project until Remote Control is enabled.
 
 Codex CLI runner with startup prompt handling:
 

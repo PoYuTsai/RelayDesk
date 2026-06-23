@@ -14,7 +14,7 @@
             "mode": "wsl",
             "cwd": "/mnt/c/path/to/MyApp",
             "terminalProfile": "Ubuntu",
-            "startCommand": "bash -lc 'cd /mnt/c/path/to/MyApp && claude --model opus --effort xhigh'"
+            "startCommand": "bash -lc 'cd /mnt/c/path/to/MyApp && claude remote-control --name \"My App\" --spawn session --permission-mode bypassPermissions'"
           }
         },
         {

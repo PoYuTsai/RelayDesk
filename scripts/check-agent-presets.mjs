@@ -36,9 +36,12 @@ if (claude) {
   requireString("claude.ultraCode.effort", claude.effort);
   requireString("claude.ultraCode.fallbackEffort", claude.fallbackEffort);
   requireString("claude.ultraCode.command", claude.command);
+  requireString("claude.ultraCode.remoteControlCommand", claude.remoteControlCommand);
   requireSemver("claude.ultraCode.minimumVersion", claude.minimumVersion);
   if (!claude.command.includes(`--model ${claude.model}`)) fail("claude command must include its model");
   if (!claude.command.includes(`--effort ${claude.effort}`)) fail("claude command must include its effort");
+  if (!claude.remoteControlCommand.includes("claude remote-control")) fail("claude remoteControlCommand must use Claude Remote Control");
+  if (!claude.remoteControlCommand.includes("--permission-mode")) fail("claude remoteControlCommand must set permission mode");
 }
 
 if (codex) {
@@ -51,7 +54,12 @@ if (codex) {
 }
 
 const example = JSON.stringify(JSON.parse(read("relay.config.example.json")));
-if (claude && !example.includes(claude.command)) fail("relay.config.example.json must use the Claude preset command");
+if (claude) {
+  const exampleUsesClaudePreset =
+    example.includes(claude.command) ||
+    (example.includes("claude remote-control") && example.includes("--permission-mode"));
+  if (!exampleUsesClaudePreset) fail("relay.config.example.json must use a Claude preset command");
+}
 
 const server = read("server/relay-server.mjs");
 const app = read("src/App.tsx");

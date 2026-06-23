@@ -1664,10 +1664,14 @@ async function startTmuxRunner(project, runner) {
     };
   }
   const cwd = runner.tmux?.cwd || project.path;
-  const args = ["new-session", "-d", "-s", runner.session];
+  const { cols, rows } = tmuxViewport(runner);
+  const args = ["new-session", "-d", "-s", runner.session, "-x", String(cols), "-y", String(rows)];
   if (cwd) args.push("-c", cwd);
   const result = await runTmux(project, runner, args, 15000);
   if (!result.ok) return result;
+  await runTmux(project, runner, ["resize-window", "-t", runner.session, "-x", String(cols), "-y", String(rows)], 10000).catch(
+    () => undefined
+  );
 
   const launched = await pasteTextAndEnter(project, runner, startCommand, 15000);
   await sleep(1200);
@@ -1705,7 +1709,19 @@ async function stopTmuxRunner(project, runner) {
 }
 
 async function captureTmuxRunner(project, runner) {
-  return runTmux(project, runner, ["capture-pane", "-p", "-J", "-t", runner.session], 10000);
+  return runTmux(project, runner, ["capture-pane", "-p", "-J", "-S", "-220", "-t", runner.session], 10000);
+}
+
+function tmuxViewport(runner) {
+  const cols = clampInt(runner.tmux?.cols ?? runner.tmux?.columns, 80, 300, 160);
+  const rows = clampInt(runner.tmux?.rows ?? runner.tmux?.height, 24, 100, 48);
+  return { cols, rows };
+}
+
+function clampInt(value, min, max, fallback) {
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed)) return fallback;
+  return Math.min(max, Math.max(min, Math.round(parsed)));
 }
 
 async function pasteTextAndEnter(project, runner, text, timeoutMs = 10000) {
