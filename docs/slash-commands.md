@@ -91,6 +91,25 @@ Other official commands listed by Claude Code docs include:
 Some commands are aliases, conditional, plan-gated, platform-specific, or
 available only on certain Claude plans.
 
+### Remote Control on Windows + WSL
+
+If your Claude Code runner is configured with `tmux.mode: "wsl"`, RelayDesk is
+controlling the Claude Code CLI inside WSL. A successful Windows PowerShell
+login such as `claude.cmd auth login` does not always prove that the WSL tmux
+session has an active Remote Control token.
+
+When the Claude pane shows `Remote Control failed · /login`, use the same live
+pane:
+
+1. Send `/login`.
+2. Choose `1. Claude account with subscription` for Pro, Max, Team, or
+   Enterprise accounts.
+3. Finish the browser authorization.
+4. Send `/remote-control` or `/rc` again.
+
+After Claude Code prints `Remote Control active`, Claude Desktop should show the
+Remote project in its Code sidebar.
+
 ## Codex CLI
 
 Common daily commands:

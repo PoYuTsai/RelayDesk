@@ -305,6 +305,11 @@ Custom commands such as `/round` or `/handoff` are not RelayDesk or provider
 built-ins. They can still work if you define them through your agent's custom
 commands, skills, prompts, or project setup.
 
+On Windows + WSL, Claude Code Remote Control must be authorized in the same WSL
+tmux session RelayDesk is controlling. If the pane says `Remote Control failed ·
+/login`, send `/login`, choose the Claude subscription option, finish browser
+auth, then send `/remote-control` or `/rc` again.
+
 References:
 
 - RelayDesk slash command guide: [docs/slash-commands.md](docs/slash-commands.md)

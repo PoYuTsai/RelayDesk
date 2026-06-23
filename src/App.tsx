@@ -475,6 +475,7 @@ const agentAvatars: Record<string, AgentAvatarAsset> = {
 const slashCommandPresets: SlashCommandPreset[] = [
   { id: "help", label: "/help", command: "/help", hint: "Show commands available in the selected CLI", risk: "safe", captureDelayMs: 650 },
   { id: "login", label: "/login", command: "/login", hint: "Sign in or reconnect the local agent account", risk: "safe", captureDelayMs: 900 },
+  { id: "remote-control", label: "/remote-control", command: "/remote-control", hint: "Reconnect Claude Code Remote Control where supported", risk: "safe", captureDelayMs: 900, aliases: ["/rc"] },
   { id: "doctor", label: "/doctor", command: "/doctor", hint: "Run the agent's built-in environment checks", risk: "safe", captureDelayMs: 900 },
   { id: "model", label: "/model", command: "/model", hint: "Open the model selector where supported", risk: "safe", captureDelayMs: 650 },
   { id: "mcp", label: "/mcp", command: "/mcp", hint: "Inspect MCP server status where supported", risk: "safe", captureDelayMs: 900 },
@@ -1031,7 +1032,7 @@ function busEventIcon(kind: RelayBusEventKind) {
 
 const contextSlashCommands = new Set(["/compact", "/resume", "/continue", "/handoff", "/round", "/recap", "/summarize", "/summary"]);
 const destructiveSlashCommands = new Set(["/clear", "/new", "/delete", "/archive", "/quit", "/exit", "/logout", "/stop"]);
-const safeSlashCommands = new Set(["/", "/help", "/status", "/usage", "/diff", "/doctor", "/context", "/cost", "/stats"]);
+const safeSlashCommands = new Set(["/", "/help", "/login", "/remote-control", "/rc", "/status", "/usage", "/diff", "/doctor", "/context", "/cost", "/stats"]);
 
 const decisionDisplayText: Record<Lang, Record<string, string>> = {
   en: {},
@@ -1803,8 +1804,9 @@ function runnerLoginCopy(lang: Lang) {
   return lang === "zh-TW"
     ? {
         title: "需要完成 Claude Code 登入",
-        detail: "這是 Claude Code 自己的登入選單。一般訂閱用戶選 1 走瀏覽器授權；只有 API billing 才選 Console。成功後 Claude Desktop 左側才會出現 Remote 專案。",
+        detail: "這是目前這個 WSL/tmux Claude Code session 的登入。一般訂閱用戶選 1 走瀏覽器授權；完成後按「重試 Remote」，Claude Desktop 左側才會出現 Remote 專案。",
         login: "送出 /login",
+        remote: "重試 Remote",
         up: "上",
         down: "下",
         enter: "Enter",
@@ -1812,8 +1814,9 @@ function runnerLoginCopy(lang: Lang) {
       }
     : {
         title: "Claude Code sign-in required",
-        detail: "This is Claude Code's own login menu. Most subscribers choose 1 and finish browser auth; Console/API billing is a separate path. Claude Desktop will show the Remote project after it connects.",
+        detail: "This is the login for this WSL/tmux Claude Code session. Most subscribers choose 1 and finish browser auth; then retry Remote so Claude Desktop can show the Remote project.",
         login: "Send /login",
+        remote: "Retry Remote",
         up: "Up",
         down: "Down",
         enter: "Enter",
@@ -1846,7 +1849,7 @@ function runnerRemoteStatus(runner: Runner, configRunner: ConfigRunner | undefin
   }
   return {
     status: "warn" as const,
-    label: runner.state === "running" ? (zh ? "Remote 未啟動" : "Remote not active") : (zh ? "Remote 離線" : "Remote off")
+    label: runner.state === "running" ? (zh ? "Remote 未確認" : "Remote unverified") : (zh ? "Remote 離線" : "Remote off")
   };
 }
 
@@ -2733,6 +2736,31 @@ export function App() {
     appendRunnerPaneOutput(runnerId, output);
   }
 
+  function errorText(error: unknown) {
+    return error instanceof Error ? error.message : String(error);
+  }
+
+  function isMissingTmuxPane(error: unknown) {
+    return /can't find (?:pane|session|window)|no server running|has no server/i.test(errorText(error));
+  }
+
+  function markRunnerStopped(runner: Runner, output?: string) {
+    const message = output || `${runner.session} is not running.`;
+    setRunners((current) =>
+      current.map((item) =>
+        item.id === runner.id
+          ? {
+              ...item,
+              state: "stopped",
+              lastOutput: message,
+              code: 1
+            }
+          : item
+      )
+    );
+    updateRunnerPaneOutput(runner.id, message, "error");
+  }
+
   function titleFromTask(value = task) {
     const title = value.trim().split(/\r?\n/)[0] || `${activeProject?.name || "Project"} session`;
     return title.length > 72 ? `${title.slice(0, 69)}...` : title;
@@ -3045,12 +3073,9 @@ export function App() {
 
   async function refresh(project = activeProject) {
     if (!project) return;
-    const [nextGit, nextRunners, nextDoctor, nextOnboarding, nextUsage, nextConfig] = await Promise.all([
+    const [nextGit, nextRunners, nextConfig] = await Promise.all([
       getJson<GitContext>(`/api/git?projectId=${encodeURIComponent(project.id)}`),
       getJson<{ runners: Runner[] }>(`/api/runners?projectId=${encodeURIComponent(project.id)}`),
-      getJson<DoctorContext>("/api/doctor"),
-      getJson<ProjectOnboardingContext>(`/api/onboarding?projectId=${encodeURIComponent(project.id)}`),
-      getJson<UsageContext>("/api/usage"),
       getJson<ConfigContext>("/api/config")
     ]);
     if (activeProjectIdRef.current !== project.id) return;
@@ -3069,10 +3094,23 @@ export function App() {
       }
       return next;
     });
-    setDoctor(nextDoctor);
-    setProjectOnboarding(nextOnboarding);
-    setUsage(nextUsage);
     setConfig(nextConfig);
+
+    void Promise.all([
+      getJson<DoctorContext>("/api/doctor"),
+      getJson<ProjectOnboardingContext>(`/api/onboarding?projectId=${encodeURIComponent(project.id)}`),
+      getJson<UsageContext>("/api/usage")
+    ])
+      .then(([nextDoctor, nextOnboarding, nextUsage]) => {
+        if (activeProjectIdRef.current !== project.id) return;
+        setDoctor(nextDoctor);
+        setProjectOnboarding(nextOnboarding);
+        setUsage(nextUsage);
+      })
+      .catch((error) => {
+        if (activeProjectIdRef.current !== project.id) return;
+        setLastRunnerOutput(`Background checks failed: ${errorText(error)}`);
+      });
   }
 
   useEffect(() => {
@@ -3170,7 +3208,14 @@ export function App() {
             if (cancelled) return;
             updateRunnerPaneOutput(runner.id, result.output || "Captured an empty tmux pane.");
           } catch (error) {
-            if (!cancelled) updateRunnerPaneOutput(runner.id, `Live peek failed: ${String(error)}`, "error");
+            if (!cancelled) {
+              const message = `Live peek failed: ${errorText(error)}`;
+              if (isMissingTmuxPane(error)) {
+                markRunnerStopped(runner, message);
+              } else {
+                updateRunnerPaneOutput(runner.id, message, "error");
+              }
+            }
           }
         })
       );
@@ -3310,7 +3355,8 @@ export function App() {
       scheduleRunnerPeeks(runner, [700, 1600, 3200]);
       await refresh(activeProject);
     } catch (error) {
-      const message = `Keyboard control failed: ${String(error)}`;
+      const message = `Keyboard control failed: ${errorText(error)}`;
+      if (isMissingTmuxPane(error)) markRunnerStopped(runner, message);
       replaceConsoleOutput(runner.id, message, "error");
       setLastRunnerOutput(message);
     } finally {
@@ -3345,7 +3391,8 @@ export function App() {
       scheduleRunnerPeeks(runner);
       await refresh(activeProject);
     } catch (error) {
-      const message = `Send failed: ${String(error)}`;
+      const message = `Send failed: ${errorText(error)}`;
+      if (isMissingTmuxPane(error)) markRunnerStopped(runner, message);
       replaceConsoleOutput(runner.id, message, "error");
       setLastRunnerOutput(message);
     } finally {
@@ -3389,7 +3436,8 @@ export function App() {
         await refresh(activeProject);
       }
     } catch (error) {
-      const message = `Console ${mode} failed: ${String(error)}`;
+      const message = `Console ${mode} failed: ${errorText(error)}`;
+      if (isMissingTmuxPane(error)) markRunnerStopped(runner, message);
       replaceConsoleOutput(runner.id, message, "error");
       if (!options.silent) setLastRunnerOutput(message);
     } finally {
@@ -4738,6 +4786,7 @@ export function App() {
                     </div>
                     <div className="login-guide-actions">
                       <button disabled={!!busyRunner || runner.state !== "running"} onClick={() => void sendTextToRunner(runner, "/login")}>{loginCopy.login}</button>
+                      <button disabled={!!busyRunner || runner.state !== "running"} onClick={() => void sendTextToRunner(runner, "/remote-control")}>{loginCopy.remote}</button>
                       <button disabled={!!busyRunner || runner.state !== "running"} onClick={() => void sendRunnerKey("Up", runner)}>↑ {loginCopy.up}</button>
                       <button disabled={!!busyRunner || runner.state !== "running"} onClick={() => void sendRunnerKey("Down", runner)}>↓ {loginCopy.down}</button>
                       <button disabled={!!busyRunner || runner.state !== "running"} onClick={() => void sendRunnerKey("Enter", runner)}>{loginCopy.enter}</button>
